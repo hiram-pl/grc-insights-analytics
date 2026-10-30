@@ -14,13 +14,14 @@ GRC Insights had published 570+ articles, but performance data lived in separate
 Raw exports (contain subscriber emails; never leave the owner's machine)
         │
         ▼
-scripts/aggregate_opens.py   → strips emails, produces per-post counts
+scripts/aggregate_opens.py      → Substack: strips emails, produces per-post counts
+scripts/aggregate_mailchimp.py  → Mailchimp: campaign, link-click and list-growth tables, no emails
         │
         ▼
 data/processed/*.csv          (email-free)
         │
         ▼
-scripts/build_db.py           → data/grc.duckdb  (posts, opens, email_posts)
+scripts/build_db.py           → data/grc.duckdb  (Substack + Mailchimp tables)
         │
         ▼
 sql/*.sql  via  scripts/run_query.py   → analysis
@@ -44,6 +45,7 @@ python scripts/run_query.py sql/open_rate_by_batch_size.sql --sample
 
 1. Unzip the Substack export into `data/raw/substack/`.
 2. `python scripts/aggregate_opens.py` → writes email-free CSVs to `data/processed/`
+   Optional: unzip the Mailchimp export into `data/raw/mailchimp/` and run `python scripts/aggregate_mailchimp.py`
 3. `python scripts/build_db.py`
 4. `python scripts/run_query.py sql/<query>.sql`
 
@@ -60,7 +62,8 @@ To inspect a new export without exposing its contents, `python scripts/inventory
 
 - [ ] Add per-post web views (Substack Stats export), the publication's north-star metric
 - [ ] Subscriber cohort analysis (hashed IDs) to separate fatigue from list composition
-- [ ] Load LinkedIn page analytics and Mailchimp campaign data
+- [x] Load Mailchimp campaign, link-click and list-growth data
+- [ ] Load LinkedIn page analytics
 - [ ] UTM tagging convention for cross-channel attribution
 - [ ] Dashboard
 - [ ] Weekly-cadence experiment: one email per week vs. historical batch sends
