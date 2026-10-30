@@ -1,0 +1,25 @@
+# --- Data: never commit. Raw exports contain subscriber emails. ---
+data/*
+!data/raw/
+!data/processed/
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+*.csv
+*.xls
+*.xlsx
+*.zip
+*.duckdb
+*.duckdb.wal
+# Sample data is fake and safe to commit
+!sample_data/*.csv
+
+# --- Python / tooling ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
+.DS_Store
+.env
