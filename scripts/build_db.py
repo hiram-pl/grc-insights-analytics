@@ -9,6 +9,8 @@ Usage (from the repo root):
 
 Tables
     Substack:  posts, opens, email_posts
+               post_stats, sub_followers_daily, sub_views_monthly, sub_audience_location
+               (stats tables built only if <data dir>/substack_stats/ has Stats-page exports)
     Mailchimp: mc_campaigns, mc_link_clicks, mc_list_growth, mc_unsub_reasons
                (built only if <data dir>/mailchimp/campaigns.csv exists)
     LinkedIn:  li_daily, li_posts, li_demographics, li_competitors
@@ -35,6 +37,12 @@ else:
 def csv(name):
     """Path string DuckDB can read, e.g. csv('mailchimp/campaigns.csv')."""
     return (data_dir / name).as_posix()
+
+
+def latest(folder, pattern):
+    """Newest export matching pattern (file names end in _YYYY-MM-DD.csv), or None."""
+    files = sorted((data_dir / folder).glob(pattern))
+    return files[-1].as_posix() if files else None
 
 
 con = duckdb.connect(str(db_path))
@@ -83,6 +91,66 @@ unmatched = con.sql("""
     WHERE p.post_number IS NULL
 """).fetchall()[0][0]
 print(f"Substack: opens rows with no matching post: {unmatched} (should be 0)")
+
+# Substack Stats-page exports (optional). These are counts only: no emails.
+stats_email = latest("substack_stats", "*_email_stats_*.csv")
+if stats_email:
+    con.sql(f"""
+    -- Per-post stats. The export has no post_id, so match on title + publish time
+    -- (titles alone are not unique: some articles were published twice).
+    CREATE OR REPLACE TABLE post_stats AS
+    SELECT
+        p.post_number,
+        s.views,
+        s.signups,
+        s.engagement_rate,
+        s.open_rate                          AS substack_open_rate
+    FROM read_csv_auto('{stats_email}') s
+    JOIN posts p
+      ON p.title = s.title
+     AND abs(epoch(p.published_at) - epoch(s.post_date::TIMESTAMPTZ)) < 120;
+
+    -- Add views and signups to the email analysis table.
+    CREATE OR REPLACE TABLE email_posts AS
+    SELECT e.*, s.views, s.signups
+    FROM email_posts e
+    LEFT JOIN post_stats s USING (post_number);
+    """)
+    n_rows = con.sql(f"SELECT COUNT(*) FROM read_csv_auto('{stats_email}')").fetchall()[0][0]
+    n_matched = con.sql("SELECT COUNT(*) FROM post_stats").fetchall()[0][0]
+    print(f"Substack stats: {n_matched} of {n_rows} posts matched (should be equal)")
+
+stats_followers = latest("substack_stats", "*_followers_*.csv")
+if stats_followers:
+    con.sql(f"""
+    -- Daily follower total (the export has no header row). change = vs. previous day.
+    CREATE OR REPLACE TABLE sub_followers_daily AS
+    SELECT
+        date,
+        followers,
+        followers - LAG(followers) OVER (ORDER BY date) AS change
+    FROM (
+        SELECT strptime(column0, '%Y/%m/%d')::DATE AS date, try_cast(column1 AS INTEGER) AS followers
+        FROM read_csv('{stats_followers}', header = false, columns = {{'column0': 'VARCHAR', 'column1': 'VARCHAR'}})
+    )
+    WHERE followers IS NOT NULL;
+    """)
+
+stats_traffic = latest("substack_stats", "*_traffic_*.csv")
+if stats_traffic:
+    con.sql(f"""
+    CREATE OR REPLACE TABLE sub_views_monthly AS
+    SELECT strptime(Date, '%Y/%m/%d')::DATE AS month, Views AS views
+    FROM read_csv_auto('{stats_traffic}', all_varchar = true)
+    """)
+    con.sql("ALTER TABLE sub_views_monthly ALTER views TYPE INTEGER")
+
+stats_location = latest("substack_stats", "*_audience_location_*.csv")
+if stats_location:
+    con.sql(f"""
+    CREATE OR REPLACE TABLE sub_audience_location AS
+    SELECT location, "free signups" AS free_signups FROM read_csv_auto('{stats_location}')
+    """)
 
 # ---------------------------------------------------------------------------
 # Mailchimp (optional)
