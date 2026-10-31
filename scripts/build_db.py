@@ -11,6 +11,8 @@ Tables
     Substack:  posts, opens, email_posts
     Mailchimp: mc_campaigns, mc_link_clicks, mc_list_growth, mc_unsub_reasons
                (built only if <data dir>/mailchimp/campaigns.csv exists)
+    LinkedIn:  li_daily, li_posts, li_demographics, li_competitors
+               (built only if <data dir>/linkedin/daily.csv exists)
 """
 
 import argparse
@@ -170,6 +172,57 @@ if (data_dir / "mailchimp" / "campaigns.csv").exists():
             print(f"    {num}  {slug}")
 else:
     print("Mailchimp: no mailchimp/campaigns.csv found, skipped")
+
+# ---------------------------------------------------------------------------
+# LinkedIn (optional)
+# ---------------------------------------------------------------------------
+if (data_dir / "linkedin" / "daily.csv").exists():
+    con.sql(f"""
+    -- One row per day. engagements uses LinkedIn's definition (clicks + reactions +
+    -- comments + reposts); rates are left out on purpose: compute them as SUM/SUM.
+    CREATE OR REPLACE TABLE li_daily AS
+    SELECT
+        date::DATE                                                     AS date,
+        impressions_total                                              AS impressions,
+        unique_impressions_organic                                     AS unique_impressions,
+        clicks_total                                                   AS clicks,
+        reactions_total                                                AS reactions,
+        comments_total                                                 AS comments,
+        reposts_total                                                  AS reposts,
+        clicks_total + reactions_total + comments_total + reposts_total AS engagements,
+        new_followers_total                                            AS new_followers,
+        total_page_views_total                                         AS page_views,
+        total_unique_visitors_total                                    AS unique_visitors
+    FROM read_csv_auto('{csv("linkedin/daily.csv")}');
+
+    -- One row per company-page post, flagged if it links to or mentions Insights.
+    CREATE OR REPLACE TABLE li_posts AS
+    SELECT
+        post_link,
+        created_date::TIMESTAMP                                        AS created_at,
+        post_title,
+        post_type,
+        content_type,
+        impressions,
+        clicks,
+        likes,
+        comments,
+        reposts,
+        follows,
+        regexp_matches(lower(post_title), 'substack|grc insights|insights\\.grcglobalgroup') AS promotes_insights
+    FROM read_csv_auto('{csv("linkedin/posts.csv")}');
+    """)
+    if (data_dir / "linkedin" / "demographics.csv").exists():
+        con.sql(f"""CREATE OR REPLACE TABLE li_demographics AS
+                    SELECT * FROM read_csv_auto('{csv("linkedin/demographics.csv")}')""")
+    if (data_dir / "linkedin" / "competitors.csv").exists():
+        con.sql(f"""CREATE OR REPLACE TABLE li_competitors AS
+                    SELECT * FROM read_csv_auto('{csv("linkedin/competitors.csv")}')""")
+    days, first, last = con.sql("SELECT COUNT(*), MIN(date), MAX(date) FROM li_daily").fetchall()[0]
+    n_posts, promo = con.sql("SELECT COUNT(*), COUNT(*) FILTER (WHERE promotes_insights) FROM li_posts").fetchall()[0]
+    print(f"LinkedIn: {days} days ({first} to {last}), {n_posts} posts, {promo} promoting Insights")
+else:
+    print("LinkedIn: no linkedin/daily.csv found, skipped")
 
 print(f"Built {db_path.relative_to(REPO)}")
 con.close()

@@ -1,6 +1,6 @@
 # GRC Insights Analytics
 
-An analytics pipeline for **GRC Insights**, the Substack publication of Global Research and Consulting Group (GRC), a student-run nonprofit consulting organization. It combines Substack and LinkedIn exports into a single DuckDB database so the team can measure what drives readership and make publishing decisions with data instead of instinct.
+An analytics pipeline for **GRC Insights**, the Substack publication of Global Research and Consulting Group (GRC), a student-run nonprofit consulting organization. It combines Substack, Mailchimp and LinkedIn exports into a single DuckDB database so the team can measure what drives readership and make publishing decisions with data instead of instinct.
 
 <!-- Before making this repo public: confirm with GRC leadership that the findings below are OK to share. -->
 
@@ -16,12 +16,13 @@ Raw exports (contain subscriber emails; never leave the owner's machine)
         ▼
 scripts/aggregate_opens.py      → Substack: strips emails, produces per-post counts
 scripts/aggregate_mailchimp.py  → Mailchimp: campaign, link-click and list-growth tables, no emails
+scripts/process_linkedin.py     → LinkedIn: daily page metrics, posts, demographics, peer benchmark
         │
         ▼
 data/processed/*.csv          (email-free)
         │
         ▼
-scripts/build_db.py           → data/grc.duckdb  (Substack + Mailchimp tables)
+scripts/build_db.py           → data/grc.duckdb  (Substack + Mailchimp + LinkedIn tables)
         │
         ▼
 sql/*.sql  via  scripts/run_query.py   → analysis
@@ -45,6 +46,7 @@ python scripts/run_query.py sql/open_rate_by_batch_size.sql --sample
 
 1. Unzip the Substack export into `data/raw/substack/`.
 2. `python scripts/aggregate_opens.py` → writes email-free CSVs to `data/processed/`
+   Optional: put LinkedIn exports in `data/raw/linkedin/` and run `python scripts/process_linkedin.py`
    Optional: unzip the Mailchimp export into `data/raw/mailchimp/` and run `python scripts/aggregate_mailchimp.py`
 3. `python scripts/build_db.py`
 4. `python scripts/run_query.py sql/<query>.sql`
@@ -63,8 +65,9 @@ To inspect a new export without exposing its contents, `python scripts/inventory
 - [ ] Add per-post web views (Substack Stats export), the publication's north-star metric
 - [ ] Subscriber cohort analysis (hashed IDs) to separate fatigue from list composition
 - [x] Load Mailchimp campaign, link-click and list-growth data
-- [ ] Load LinkedIn page analytics
-- [ ] UTM tagging convention for cross-channel attribution
+- [x] Load LinkedIn page analytics (overlapping exports de-duplicated, newest wins)
+- [x] UTM tagging convention (UTM builder sheet)
+- [ ] Connect GA4 to Substack so UTM-tagged visits are measurable
 - [ ] Dashboard
 - [ ] Weekly-cadence experiment: one email per week vs. historical batch sends
 
