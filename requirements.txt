@@ -1,4 +1,5 @@
 duckdb>=1.1
 pandas>=2.0
 matplotlib>=3.7
+plotly>=5.20
 jupyterlab>=4.0

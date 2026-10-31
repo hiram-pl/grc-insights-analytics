@@ -40,7 +40,10 @@ Raw exports contain subscriber email addresses. They are processed only on the d
 pip install -r requirements.txt
 python scripts/build_db.py --sample
 python scripts/run_query.py sql/open_rate_by_batch_size.sql --sample
+python scripts/export_dashboard_data.py --sample && python scripts/build_dashboard_html.py --sample
 ```
+
+The sample dashboard (`sample_data/dashboard/dashboard.html`) uses fictional data and can be published, e.g. on GitHub Pages.
 
 ## Running on real data
 
@@ -51,6 +54,7 @@ python scripts/run_query.py sql/open_rate_by_batch_size.sql --sample
 3. `python scripts/build_db.py`
 4. `python scripts/run_query.py sql/<query>.sql`
 5. `python scripts/export_dashboard_data.py` → small aggregated CSVs in `data/processed/dashboard/` for the dashboard
+6. `python scripts/build_dashboard_html.py` → `data/processed/dashboard/dashboard.html`, a standalone dashboard that opens in any browser
 
 To inspect a new export without exposing its contents, `python scripts/inventory_files.py <folder>` lists each CSV's columns and row count and flags files that contain email addresses.
 
