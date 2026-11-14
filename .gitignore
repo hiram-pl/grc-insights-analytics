@@ -13,7 +13,7 @@ data/processed/*
 *.duckdb
 *.duckdb.wal
 # Sample data is fake and safe to commit
-!sample_data/*.csv
+!sample_data/**/*.csv
 
 # --- Python / tooling ---
 __pycache__/

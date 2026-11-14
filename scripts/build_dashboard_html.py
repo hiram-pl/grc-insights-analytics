@@ -33,6 +33,8 @@ if missing:
     raise SystemExit(f"Missing {', '.join(missing)} in {src}. Run scripts/export_dashboard_data.py"
                      f"{' --sample' if args.sample else ''} first.")
 d = {n: pd.read_csv(src / f"{n}.csv") for n in needed}
+cohort_file = src / "cohort_open_rates.csv"  # optional: only when hashed subscriber data exists
+cohorts = pd.read_csv(cohort_file) if cohort_file.exists() else None
 
 BLUE, ORANGE, GREEN, RED, GREY = "#2f6fb2", "#d9822b", "#3a8f5c", "#c0392b", "#b8bec6"
 LAYOUT = dict(template="simple_white", height=300, margin=dict(l=50, r=20, t=10, b=40),
@@ -106,6 +108,24 @@ f.update_yaxes(tickformat=".0%", rangemode="tozero")
 f.update_layout(hovermode="x unified", legend=dict(orientation="h", y=1.1))
 charts["open"] = fig_html(f)
 
+if cohorts is not None:
+    c = cohorts.assign(send_quarter=lambda x: pd.to_datetime(x["send_quarter"]))
+    names = sorted(c["cohort"].unique())
+    # oldest cohort darkest, newest lightest (one hue so age reads as a sequence)
+    shades = ["#0b2f57", "#1d4f86", "#2f6fb2", "#5b93cc", "#8db6e0", "#bcd4ee"]
+    shades = shades[-len(names):] if len(names) <= len(shades) else [BLUE] * len(names)
+    f = go.Figure()
+    for name, color in zip(names, shades):
+        g = c[c["cohort"] == name]
+        f.add_trace(go.Scatter(x=g["send_quarter"], y=g["open_rate"], name=f"Joined {name}",
+                               mode="lines+markers", line=dict(color=color, width=2),
+                               customdata=g[["subscribers"]],
+                               hovertemplate=f"Joined {name}: %{{y:.0%}} (%{{customdata[0]}} subscribers)<extra></extra>"))
+    f.update_yaxes(tickformat=".0%", rangemode="tozero")
+    f.update_xaxes(tickformat="Q%q %Y", dtick="M3")
+    f.update_layout(hovermode="x unified", legend=dict(orientation="h", y=1.15))
+    charts["cohorts"] = fig_html(f)
+
 m = d["mailchimp_insights_clicks"].assign(sent_on=lambda x: pd.to_datetime(x["sent_on"]))
 f = go.Figure(go.Scatter(x=m["sent_on"], y=m["insights_clicks"], mode="markers", marker=dict(color=BLUE, size=8),
                          customdata=m[["campaign", "delivered"]],
@@ -136,6 +156,12 @@ for r in d["email_posts"].itertuples():
 def card(title, note, chart):
     return f'<div class="card"><h3>{title}</h3><p class="note">{note}</p>{charts[chart]}</div>'
 
+
+cohort_section = "" if cohorts is None else f"""<h2>Subscriber fatigue</h2><div class="grid">
+{card("Open rate by subscriber cohort",
+      "Each line is the subscribers who got their first Insights email in that half-year. Lines falling "
+      "over time mean the same people are opening less (fatigue), not that the list changed.", "cohorts")}
+</div>"""
 
 label = "SAMPLE DATA (fictional)" if args.sample else "Internal: GRC data, do not share publicly"
 page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -184,6 +210,7 @@ and those posts drew a median of <b>{batch_views:,}</b> views, against <b>{solo_
 {card("Follower change by emails sent that day", "Average daily follower change. Below zero means more people left than joined.", "batch_followers")}
 {card("Views per post by emails sent that day", "Median views per post, posts emailed from Oct 2025 on.", "batch_views")}
 </div>
+{cohort_section}
 <h2>Channels</h2><div class="grid">
 {card("Open rate by quarter", "Unique opens divided by delivered. Gaps mean no sends that quarter.", "open")}
 {card("Mailchimp clicks to Insights", "Each dot is a campaign that linked to Insights. Total clicks, can include security scanners.", "mailchimp")}

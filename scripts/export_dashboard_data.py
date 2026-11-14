@@ -100,6 +100,22 @@ queries = {
         GROUP BY ALL ORDER BY sent_on""",
 }
 
+# Open rate by subscriber cohort (half-year of first Insights email). Optional: needs the
+# hashed subscriber tables from hash_subscribers.py. Cohort-quarters with under 50
+# deliveries are dropped as too noisy to plot.
+if "sub_email_history" in have:
+    queries["cohort_open_rates"] = """
+        SELECT strftime(send_quarter, '%Y-%m-%d') AS send_quarter,
+               year(cohort) || CASE WHEN month(cohort) <= 6 THEN ' H1' ELSE ' H2' END AS cohort,
+               COUNT(DISTINCT sub_id) AS subscribers, COUNT(*) AS deliveries,
+               ROUND(AVG(opened::INTEGER), 4) AS open_rate
+        FROM sub_email_history
+        GROUP BY ALL HAVING COUNT(*) >= 50
+        ORDER BY cohort, send_quarter"""
+else:
+    print("No sub_email_history table: skipping cohort_open_rates.csv (run scripts/hash_subscribers.py)")
+    (out / "cohort_open_rates.csv").unlink(missing_ok=True)
+
 for name, sql in queries.items():
     df = con.sql(sql).df()
     df = df.drop(columns=[c for c in ("sort_order",) if c in df.columns])

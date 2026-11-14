@@ -1,0 +1,5 @@
+bucket,label,days,avg_follower_change,total_losses
+none,No send,706,0.46,-16
+1,1 email,41,-0.17,-14
+2-4,2–4 emails,22,-0.73,-18
+5plus,5+ emails,6,-4.67,-28
