@@ -49,7 +49,8 @@ grc-insights-analytics/
 ├── ops/
 │   ├── com.grc.insights.refresh.plist  # launchd template (no user paths): refresh.py every Monday 08:00
 │   ├── install_schedule.sh             # fills in the template and loads it (--remove to uninstall)
-│   └── publish_dashboard_prompt.md     # the "publish the dashboard" procedure
+│   ├── publish_dashboard_prompt.md     # the "publish the dashboard" procedure
+│   └── RUNBOOK.md                      # what happens each Monday, what each notification means, what to do
 ├── scripts/
 │   ├── refresh.py                # ONE COMMAND for the whole refresh (what launchd runs); see Commands
 │   ├── ingest_inbox.py           # drop folder: routes exports in data/inbox/ and runs their processor
@@ -91,7 +92,7 @@ grc-insights-analytics/
 ```bash
 pip install -r requirements.txt
 
-# Weekly refresh (automatic: launchd runs this every Monday 08:00)
+# Weekly refresh (automatic: launchd runs this every Monday 08:00; operations guide: ops/RUNBOOK.md)
 python scripts/refresh.py                  # inbox -> GA4 -> Mailchimp -> freshness -> build -> export -> HTML -> queue
 python scripts/refresh.py --no-pulls       # quick rebuild without the API pulls
 #   Manual sources: drop the export (zip or file, as downloaded) into data/inbox/; the next run files it.

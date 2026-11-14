@@ -62,6 +62,8 @@ After that:
 2. **When a manual source is stale**, download its export and drop it, as is, into `data/inbox/`.
 3. **When the run reports changed dashboard files**, publish them to the hosted dashboard (see `ops/publish_dashboard_prompt.md`).
 
+What each Monday notification means and what to do about it: [`ops/RUNBOOK.md`](ops/RUNBOOK.md).
+
 Explore with `python scripts/run_query.py sql/<query>.sql`, `duckdb -readonly data/grc.duckdb`, or `notebooks/explore.ipynb`.
 
 To inspect a new export without exposing its contents, `python scripts/inventory_files.py <folder>` lists each CSV's columns and row count and flags files that contain email addresses.
