@@ -121,3 +121,5 @@ print(f"{len(delivers)} posts, {n_del:,} deliveries to {n_subs} addresses; {n_li
 if orphan_opens:
     print(f"  {orphan_opens} opens had no matching delivery (dropped)")
 print("Wrote data/processed/subscribers.csv and sub_deliveries.csv. No email addresses included.")
+
+con.close()  # explicit close: DuckDB 2.0 prints nanobind "leaked" warnings if left open at exit
