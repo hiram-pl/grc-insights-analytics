@@ -91,8 +91,12 @@ for f in find("geo_data/clicks/*.csv"):
         continue
     num, slug = campaign_key(f)
     parts = df["Url"].fillna("").map(urlsplit)
+    # Links that carry an email address: proper mailto: links, and malformed ones written as
+    # http://name@domain (the address lands in netloc). Keep only the fact it was an email link.
+    is_email = parts.map(lambda p: p.scheme == "mailto" or "@" in p.netloc or bool(EMAIL.search(p.path)))
     df["domain"] = parts.map(lambda p: p.netloc.lower().removeprefix("www.") or p.scheme)
-    df["path"] = parts.map(lambda p: "" if p.scheme == "mailto" else p.path)  # drop mailto addresses
+    df["path"] = parts.map(lambda p: p.path)
+    df.loc[is_email, ["domain", "path"]] = ["email link", ""]
     df["clicks"] = pd.to_numeric(df["Clicks"], errors="coerce").fillna(0)
     agg = df.groupby(["domain", "path"], as_index=False)["clicks"].sum()
     click_rows.append(agg.assign(campaign_num=num, campaign_slug=slug))
