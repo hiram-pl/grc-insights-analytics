@@ -254,4 +254,28 @@ for k in range(24):
                      rng.randint(0, 10), rng.randint(0, 6), rng.randint(0, 8)))
 write("linkedin/posts.csv", ["post_link", "created_date", "post_title", "post_type", "content_type", "impressions",
                              "clicks", "likes", "comments", "reposts", "follows"], li_posts)
+
+# ---------------------------------------------------------------------------
+# GA4 web traffic (tracking "starts" Oct 1, 2026 in the sample)
+# ---------------------------------------------------------------------------
+SOURCES = [("google", "organic", "(organic)", 4.0, 0.45), ("(direct)", "(none)", "(direct)", 3.0, 0.25),
+           ("grcglobalgroup.com", "referral", "(referral)", 1.0, 0.5),
+           ("publication-search", "referral", "(referral)", 0.8, 0.4),
+           ("linkedin", "social", "insights-relaunch", 0.4, 0.55),
+           ("mailchimp", "email", "monthly-newsletter", 0.3, 0.6), ("chatgpt.com", "referral", "(referral)", 0.2, 0.7)]
+pages = [f"/p/{slug(t).strip('-')}" for t in sorted(used)[:40]] + ["/", "/archive"]
+traffic, page_views = [], {}
+for i in range(31):
+    day = date(2026, 10, 1) + timedelta(days=i)
+    for src, med, camp, rate, engaged in SOURCES:
+        for _ in range(sum(rng.random() < rate / 4 for _ in range(4)) * rng.randint(1, 3)):
+            page = rng.choice(pages)
+            n_views = rng.randint(1, 3)
+            traffic.append((day.isoformat(), src, med, camp, page, 1, int(rng.random() < engaged),
+                            int(rng.random() < 0.7), n_views, rng.randint(0, 240)))
+            page_views[(day.isoformat(), page)] = page_views.get((day.isoformat(), page), 0) + n_views
+write("ga4/traffic_daily.csv", ["date", "source", "medium", "campaign", "landing_page", "sessions",
+                                "engaged_sessions", "new_users", "views", "engagement_seconds"], traffic)
+write("ga4/pages_daily.csv", ["date", "page", "views", "active_users"],
+      [(d_, p_, v, max(1, v - rng.randint(0, 1))) for (d_, p_), v in sorted(page_views.items())])
 print("Done. All of it is fictional.")

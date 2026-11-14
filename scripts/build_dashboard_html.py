@@ -35,6 +35,8 @@ if missing:
 d = {n: pd.read_csv(src / f"{n}.csv") for n in needed}
 cohort_file = src / "cohort_open_rates.csv"  # optional: only when hashed subscriber data exists
 cohorts = pd.read_csv(cohort_file) if cohort_file.exists() else None
+ga4 = ({n: pd.read_csv(src / f"{n}.csv") for n in ("ga4_daily", "ga4_channels")}
+       if (src / "ga4_daily.csv").exists() and (src / "ga4_channels.csv").exists() else None)
 
 BLUE, ORANGE, GREEN, RED, GREY = "#2f6fb2", "#d9822b", "#3a8f5c", "#c0392b", "#b8bec6"
 LAYOUT = dict(template="simple_white", height=300, margin=dict(l=50, r=20, t=10, b=40),
@@ -126,6 +128,21 @@ if cohorts is not None:
     f.update_layout(hovermode="x unified", legend=dict(orientation="h", y=1.15))
     charts["cohorts"] = fig_html(f)
 
+if ga4 is not None:
+    g = ga4["ga4_daily"].assign(date=lambda x: pd.to_datetime(x["date"]))
+    f = go.Figure(go.Bar(x=g["date"], y=g["sessions"], marker_color=BLUE, customdata=g[["views"]],
+                         hovertemplate="%{x|%b %-d, %Y}<br>%{y:,} sessions, %{customdata[0]:,} views<extra></extra>"))
+    f.update_xaxes(tickformat="%b %-d")
+    charts["ga4_daily"] = fig_html(f)
+
+    ch = ga4["ga4_channels"].sort_values("sessions")  # largest at the top of a horizontal bar chart
+    f = go.Figure(go.Bar(x=ch["sessions"], y=ch["channel"], orientation="h",
+                         marker_color=[GREEN if c == "LinkedIn" else BLUE for c in ch["channel"]],
+                         customdata=ch[["engaged_rate"]],
+                         hovertemplate="%{y}<br>%{x:,} sessions<br>%{customdata[0]:.0%} engaged<extra></extra>"))
+    f.update_layout(margin=dict(l=110, r=20, t=10, b=40))
+    charts["ga4_channels"] = fig_html(f)
+
 m = d["mailchimp_insights_clicks"].assign(sent_on=lambda x: pd.to_datetime(x["sent_on"]))
 f = go.Figure(go.Scatter(x=m["sent_on"], y=m["insights_clicks"], mode="markers", marker=dict(color=BLUE, size=8),
                          customdata=m[["campaign", "delivered"]],
@@ -161,6 +178,15 @@ cohort_section = "" if cohorts is None else f"""<h2>Subscriber fatigue</h2><div 
 {card("Open rate by subscriber cohort",
       "Each line is the subscribers who got their first Insights email in that half-year. Lines falling "
       "over time mean the same people are opening less (fatigue), not that the list changed.", "cohorts")}
+</div>"""
+
+ga4_section = ""
+if ga4 is not None:
+    span = f"{pd.to_datetime(ga4['ga4_daily']['date']).min():%b %-d, %Y}"
+    ga4_section = f"""<h2>Web traffic (GA4)</h2><div class="grid">
+{card("Sessions per day", f"Visits to the Insights site, from Google Analytics. Tracking started {span}.", "ga4_daily")}
+{card("Sessions by source", "Where visits came from since tracking started. Hover for the share of engaged sessions "
+      "(10+ seconds, 2+ pages, or a key event). UTM-tagged links are counted under their source.", "ga4_channels")}
 </div>"""
 
 label = "SAMPLE DATA (fictional)" if args.sample else "Internal: GRC data, do not share publicly"
@@ -211,6 +237,7 @@ and those posts drew a median of <b>{batch_views:,}</b> views, against <b>{solo_
 {card("Views per post by emails sent that day", "Median views per post, posts emailed from Oct 2025 on.", "batch_views")}
 </div>
 {cohort_section}
+{ga4_section}
 <h2>Channels</h2><div class="grid">
 {card("Open rate by quarter", "Unique opens divided by delivered. Gaps mean no sends that quarter.", "open")}
 {card("Mailchimp clicks to Insights", "Each dot is a campaign that linked to Insights. Total clicks, can include security scanners.", "mailchimp")}

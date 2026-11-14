@@ -88,6 +88,7 @@ To inspect a new export without exposing its contents, `python scripts/inventory
 - [x] Pull GA4 traffic into DuckDB via the Data API (`ga4_traffic_daily`, `ga4_pages_daily`; data starts Oct 30, 2026)
 - [x] Dashboard (GRC Insights Growth Dashboard, fed by `scripts/export_dashboard_data.py`)
 - [x] Cohort open-rate chart on the dashboard (shown when hashed subscriber data exists)
+- [x] Web traffic (GA4) section on the dashboard: sessions per day and by source
 - [ ] Weekly-cadence experiment: one email per week vs. historical batch sends
 
 ## Tech

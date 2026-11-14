@@ -116,6 +116,31 @@ else:
     print("No sub_email_history table: skipping cohort_open_rates.csv (run scripts/hash_subscribers.py)")
     (out / "cohort_open_rates.csv").unlink(missing_ok=True)
 
+# GA4 web traffic (optional: run scripts/pull_ga4.py). Sources are grouped into a few
+# readable channels; the raw source/medium detail is in sql/ga4_traffic_sources.sql.
+CHANNEL = """CASE
+    WHEN source = '(direct)'                                                    THEN 'Direct'
+    WHEN medium = 'organic' AND source IN ('google', 'bing', 'duckduckgo', 'yahoo', 'ecosia') THEN 'Search engines'
+    WHEN source LIKE '%linkedin%' OR source = 'lnkd.in'                          THEN 'LinkedIn'
+    WHEN medium = 'email' OR source LIKE '%mailchimp%' OR source LIKE '%mail.%'  THEN 'Email'
+    WHEN source LIKE '%substack%' OR source = 'publication-search'               THEN 'Substack'
+    WHEN source LIKE '%grc%'                                                     THEN 'GRC websites'
+    ELSE 'Other' END"""
+GA4_FILES = ("ga4_daily", "ga4_channels")
+if "ga4_traffic_daily" in have:
+    queries["ga4_daily"] = """
+        SELECT strftime(date, '%Y-%m-%d') AS date, SUM(sessions)::INTEGER AS sessions,
+               SUM(views)::INTEGER AS views
+        FROM ga4_traffic_daily GROUP BY date ORDER BY date"""
+    queries["ga4_channels"] = f"""
+        SELECT {CHANNEL} AS channel, SUM(sessions)::INTEGER AS sessions,
+               ROUND(SUM(engaged_sessions) / SUM(sessions), 3) AS engaged_rate
+        FROM ga4_traffic_daily GROUP BY 1 ORDER BY sessions DESC"""
+else:
+    print("No ga4_traffic_daily table: skipping GA4 files (run scripts/pull_ga4.py)")
+    for f in GA4_FILES:
+        (out / f"{f}.csv").unlink(missing_ok=True)
+
 for name, sql in queries.items():
     df = con.sql(sql).df()
     df = df.drop(columns=[c for c in ("sort_order",) if c in df.columns])
