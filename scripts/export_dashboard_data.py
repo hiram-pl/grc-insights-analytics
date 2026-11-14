@@ -83,7 +83,7 @@ queries = {
     "email_posts": """
         SELECT post_number, title, strftime(emailed_at, '%Y-%m-%d') AS sent_on, batch_size,
                recipients, ROUND(open_rate, 4) AS open_rate, views
-        FROM email_posts ORDER BY emailed_at DESC""",
+        FROM email_posts ORDER BY emailed_at DESC, post_number""",
 
     # LinkedIn company page by month.
     "linkedin_monthly": (REPO / "sql" / "linkedin_monthly.sql").read_text().rstrip().rstrip(";").replace(
@@ -97,7 +97,7 @@ queries = {
         JOIN mc_campaign_ids i ON i.campaign_num = l.campaign_num
         JOIN mc_campaigns c ON c.campaign_uid = i.campaign_uid
         WHERE l.is_insights
-        GROUP BY ALL ORDER BY sent_on""",
+        GROUP BY ALL ORDER BY sent_on, l.campaign_num""",
 }
 
 # Open rate by subscriber cohort (half-year of first Insights email). Optional: needs the
@@ -135,7 +135,7 @@ if "ga4_traffic_daily" in have:
     queries["ga4_channels"] = f"""
         SELECT {CHANNEL} AS channel, SUM(sessions)::INTEGER AS sessions,
                ROUND(SUM(engaged_sessions) / SUM(sessions), 3) AS engaged_rate
-        FROM ga4_traffic_daily GROUP BY 1 ORDER BY sessions DESC"""
+        FROM ga4_traffic_daily GROUP BY 1 ORDER BY sessions DESC, channel"""
 else:
     print("No ga4_traffic_daily table: skipping GA4 files (run scripts/pull_ga4.py)")
     for f in GA4_FILES:

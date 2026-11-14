@@ -225,15 +225,16 @@ Use the **GRC_UTM_Builder** sheet (Google Sheet, shared with the Marketing Pod) 
 
 ## Dashboards
 
-- **Claude-hosted:** "GRC Insights Growth Dashboard", https://claude.ai/artifact/58LF778yncSfUDhxBcGH9U. Private until shared; anyone shared with can download its data files. Built from the Claude "Dashboard" artifact type: its page (`files/index.html`) and its 11 datasets live in the artifact's store, and each dataset is an attached CSV with the **same id as the CSV name** in `data/processed/dashboard/` (8 originals + `cohort_open_rates`, `ga4_daily`, `ga4_channels`, added Nov 14, 2026).
+- **Claude-hosted:** "GRC Insights Growth Dashboard", https://claude.ai/artifact/58LF778yncSfUDhxBcGH9U. Private until shared; anyone shared with can download its data files. Built from the Claude "Dashboard" artifact type: its page (`files/index.html`) and its 12 datasets live in the artifact's store, and each dataset is an attached CSV with the **same id as the CSV name** in `data/processed/dashboard/` (8 originals + `cohort_open_rates`, `ga4_daily`, `ga4_channels`, `freshness`, added Nov 14, 2026).
 - **No live GA4:** Claude.ai has no Google Analytics connector (checked Nov 14, 2026), so the hosted dashboard can't query GA4 live. It's refreshed on request instead. A self-hosted GA4 MCP server was judged not worth the upkeep; Looker Studio is the option if the team needs live GA4 between refreshes.
-- **"Refresh the hosted dashboard"** means:
-  1. `python scripts/pull_ga4.py && python scripts/build_db.py && python scripts/export_dashboard_data.py` (plus the processing scripts first if new Substack/Mailchimp/LinkedIn exports arrived).
-  2. For each CSV in `data/processed/dashboard/` that changed (compare with the attached copy), upload it with the Artifact tool: `publish` with `url`, `asset: true`, `file_path` (one CSV per call). Note the returned `/_blob/<id>`.
-  3. With ArtifactData, read `datasets/<id>`, then `update` it, pinned to its version: `source.url` = the new blob, `updated: {at: <UTC now>, by: "grc-insights-analytics export_dashboard_data.py"}`, `edit: {via: "claude", at: <UTC now>}`. Use one `batch` for all of them.
-  4. Delete each replaced blob (`Artifact` `delete` with `url` and the old asset id as `path`), so outdated rows don't stay downloadable.
-  5. Don't touch `files/index.html` for a data refresh. Charts, sentences and KPIs recompute from the datasets. For page changes, re-read it first (the owner may have edited it by hand) and follow the type's `one-writer` rules.
-  6. With the dashboard open, read `data/users/me/check` and `runs` via ArtifactData for errors.
+- **"Publish the dashboard"** (or "refresh the hosted dashboard") means: follow `ops/publish_dashboard_prompt.md`. In short:
+  1. Data should already be fresh from the weekly `refresh.py`; if not, run `python scripts/refresh.py` first.
+  2. `python scripts/publish_dashboard.py` lists CSVs changed since the last publish (by SHA-256 against `data/processed/dashboard/.published_hashes.json`).
+  3. Upload only those whose sha256 differs from the attached blob (Artifact `list` `scope: "assets"` shows blob hashes), batch-update the `datasets/<id>` pinned to their versions, then delete the replaced blobs.
+  4. `python scripts/publish_dashboard.py --mark-published`, then read `data/users/me/check` and `runs`.
+  5. Don't touch `files/index.html` for a data publish. For page changes, re-read it first (the owner may have edited it by hand) and follow the type's `one-writer` rules.
+- **Why not fully automatic:** the Artifact tools exist only in interactive Claude Code sessions, not headless `claude -p` (tested Nov 14, 2026 with Claude Code 2.1.325, also with `--tools`). So the weekly job queues changes and notifies; the owner says "publish the dashboard". Re-test `claude -p` after Claude Code updates; if the tools appear, `publish_dashboard.py` can call it directly.
+- The hosted page shows a **"Data as of"** line from the `freshness` dataset (added Nov 14, 2026).
 - **Standalone:** `build_dashboard_html.py` -> `data/processed/dashboard/dashboard.html` (real, internal) and `sample_data/dashboard/dashboard.html` (fictional, publishable via GitHub Pages once the repo is public). Loads Plotly from CDN.
 - Headline: "Relaunch at one email a week." KPIs: followers + 30-day change, latest-month views, Substack vs Mailchimp open rate, LinkedIn posts linking to Insights.
 - Sections: Reach, Sending pattern, **Subscriber fatigue** (open rate by cohort; optional, needs hashed subscriber data), **Web traffic (GA4)** (sessions per day, sessions by channel; optional, needs GA4 pull), Channels, every emailed post, definitions. Optional sections are skipped cleanly when their data is missing.

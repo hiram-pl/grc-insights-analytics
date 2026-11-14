@@ -9,7 +9,8 @@ One command for the whole weekly refresh. launchd runs it every Monday; you can 
     5. build_db         processed CSVs -> data/grc.duckdb
     6. export           DB -> dashboard CSVs
     7. dashboard_html   CSVs -> standalone dashboard.html
-    8. publish          changed CSVs -> Claude-hosted dashboard (only with --publish; Phase 4)
+    8. dashboard_queue  list dashboard CSVs that changed since the hosted dashboard was last
+                        published; you then say "publish the dashboard" in Claude Code
 
 Failure policy:
     - Source steps (1-3) may fail: the source keeps last run's data (the pull's output
@@ -25,11 +26,11 @@ Exit code: 0 all good, 2 finished but a source failed or is stale, 1 a build ste
 Usage (from the repo root):
     python scripts/refresh.py               # everything
     python scripts/refresh.py --no-pulls    # skip the API pulls (offline / quick rebuild)
-    python scripts/refresh.py --publish     # also update the hosted dashboard
 """
 
 import argparse
 import csv
+import json
 import os
 import re
 import shutil
@@ -53,7 +54,6 @@ EMAIL = re.compile(r"[^@\s,;:<>\"']+@[^@\s,;:<>\"']+\.[a-z]{2,}", re.I)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--no-pulls", action="store_true", help="skip the GA4 and Mailchimp pulls")
-parser.add_argument("--publish", action="store_true", help="update the Claude-hosted dashboard")
 args = parser.parse_args()
 
 run_id = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
@@ -188,8 +188,8 @@ STEPS = [
     ("export", "export_dashboard_data.py", True, None),
     ("dashboard_html", "build_dashboard_html.py", True, None),
 ]
-if args.publish:
-    STEPS.append(("publish", None, True, None))
+# Queue changed CSVs for the hosted dashboard (uploading needs an interactive Claude session).
+STEPS.append(("dashboard_queue", "publish_dashboard.py", False, None))
 
 
 def notify(title, message):
@@ -217,9 +217,6 @@ try:
                 for r in rows:
                     say(f"   {r['source']:16} {r['status']:8} updated {r['updated_on']}, data through {r['data_through']}")
                 ok, note = True, f"{sum(r['status'] == 'ok' for r in rows)} of {len(rows)} sources ok"
-            elif name == "publish":
-                ok, note = False, "publishing is set up in Phase 4"
-                say("   " + note)
             else:
                 ok, note = run_script(script)
         except Exception as e:      # a crash inside refresh.py itself counts as a failed step
@@ -264,9 +261,16 @@ else:
 say(headline)
 for _, p in problems.iterrows():
     say(f"   {p['source']}: {p['status']} ({p['age_days']} days old). {p['action']}")
+pending_file = PROCESSED / "dashboard" / ".pending_publish.json"
+n_pending = 0
+if not stopped and pending_file.exists():
+    n_pending = len(json.loads(pending_file.read_text())["files"])
+    say(f"Hosted dashboard: {n_pending} files changed. In Claude Code, say \"publish the dashboard\".")
 say(f"Log: {Path(log.name).relative_to(REPO)}")
 log.close()
 
 detail = "; ".join(f"{p['source']} {p['status']}" for _, p in problems.iterrows()) or "GA4, Mailchimp up to date"
+if n_pending:
+    detail += f". Hosted dashboard: {n_pending} files to publish"
 notify("GRC Insights refresh", f"{headline}. {detail}")
 sys.exit(1 if stopped else 2 if (failed_steps or not problems.empty) else 0)
