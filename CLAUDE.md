@@ -11,6 +11,7 @@ The repo owner is GRC's **Global Director of Insights** (Marketing Pod). The rol
 The framing: treat Insights as a small **growth product** with users, data and a funnel, not just a publication. Every target role is a version of "understand a funnel, measure it, move it."
 
 - **Step 1 (done):** instrument everything. Get all sources into one database, define metrics, set up attribution, build a dashboard.
+- **Automation (done Nov 14, 2026):** weekly unattended refresh (launchd + `refresh.py`), Mailchimp via API, drop folder for Substack/LinkedIn, freshness tracking, hosted dashboard publish queue.
 - **Step 2 (next):** create more projects for target roles and run experiments against the Step 1 baseline.
 
 ## Working with the owner (learning preferences)
@@ -28,7 +29,9 @@ Skill level: comfortable reading SQL (about a third of LeetCode SQL 50), though 
 - Before sharing any new export, run `python scripts/inventory_files.py <folder>`: it prints columns and row counts and flags files containing emails, without showing values.
 - For the competition audience: counts by month/source/rating only. No school- or city-level breakdowns.
 - Subscriber-level analysis uses **hashed IDs**, never emails. `hash_subscribers.py` replaces each email with an HMAC-SHA256 hash keyed by `data/.subscriber_hash_key` (git-ignored, created on first run). Anyone with the key plus a list of emails could re-link IDs to people, so the key never leaves the owner's machine; reuse it on later exports so IDs stay stable.
-- The GA4 service account key (`data/ga4-key.json`) is a credential: git-ignored, `chmod 600`, never pasted into chats or tools.
+- The GA4 service account key (`data/ga4-key.json`) and the Mailchimp API key (`data/mailchimp-key`) are credentials: git-ignored, `chmod 600`, never pasted into chats or tools.
+- API pulls request only the fields they need (`fields=` whitelist), so personal data never reaches the machine. Keep it that way when adding endpoints.
+- `ingest_inbox.py` refuses to copy any file containing an email into `data/processed/`, and extracts zips safely (no paths outside the target).
 - Privacy checks are a feature: if `aggregate_mailchimp.py` (or any script) stops on its no-email check, find and fix the cause; never weaken or skip the check.
 - The **code is the owner's; the data is GRC's.** Commit and publish only `sample_data/` (fictional), never real data.
 - Clear notebook outputs before committing (`jupyter nbconvert --clear-output --inplace notebooks/explore.ipynb`).
@@ -41,28 +44,41 @@ grc-insights-analytics/
 ├── CLAUDE.md
 ├── README.md                 # recruiter-facing: problem, pipeline, privacy, findings, roadmap
 ├── STATUS.md                 # project log: everything done so far, current state, open items
-├── requirements.txt          # duckdb, pandas, matplotlib, plotly, jupyterlab, google-analytics-data, python-calamine
+├── requirements.txt          # duckdb, pandas, matplotlib, plotly, jupyterlab, google-analytics-data, python-calamine, requests
 ├── .gitignore                # blocks data/, *.csv, *.xls*, *.zip, *.duckdb; allows sample_data/**/*.csv
+├── ops/
+│   ├── com.grc.insights.refresh.plist  # launchd template (no user paths): refresh.py every Monday 08:00
+│   ├── install_schedule.sh             # fills in the template and loads it (--remove to uninstall)
+│   └── publish_dashboard_prompt.md     # the "publish the dashboard" procedure
 ├── scripts/
+│   ├── refresh.py                # ONE COMMAND for the whole refresh (what launchd runs); see Commands
+│   ├── ingest_inbox.py           # drop folder: routes exports in data/inbox/ and runs their processor
+│   ├── pull_mailchimp.py         # Mailchimp Marketing API -> same 4 CSVs as the export path (fields= whitelist)
+│   ├── mc_common.py              # shared: URL cleaning, slug rule, no-email check (both Mailchimp paths)
+│   ├── publish_dashboard.py      # lists dashboard CSVs changed since the last hosted publish
 │   ├── inventory_files.py        # list CSVs: columns, row counts, email flag (no values printed)
 │   ├── aggregate_opens.py        # Substack per-post open/deliver files -> per_post_opens.csv (+ copies posts.csv)
 │   ├── hash_subscribers.py       # Substack email list + deliveries/opens -> subscribers.csv, sub_deliveries.csv (hashed ids)
-│   ├── aggregate_mailchimp.py    # Mailchimp export -> 5 email-free tables, self-checks for emails
+│   ├── aggregate_mailchimp.py    # Mailchimp export -> 5 email-free tables (fallback/backfill; the API pull is primary)
 │   ├── process_linkedin.py       # LinkedIn .xls/.xlsx exports -> daily/posts/demographics/competitors CSVs (calamine reader)
 │   ├── pull_ga4.py               # GA4 Data API -> processed/ga4/traffic_daily.csv, pages_daily.csv
-│   ├── build_db.py               # processed CSVs -> data/grc.duckdb (20 tables)
+│   ├── build_db.py               # processed CSVs -> data/grc.duckdb (22 tables)
 │   ├── run_query.py              # run a sql/*.sql file against the DB
-│   ├── export_dashboard_data.py  # DB -> 8 required + 3 optional CSVs for the dashboards (checks required tables first)
+│   ├── export_dashboard_data.py  # DB -> 8 required + 4 optional CSVs for the dashboards (deterministic row order)
 │   ├── build_dashboard_html.py   # those CSVs -> standalone Plotly dashboard.html
 │   └── make_sample_data.py       # seeded generator for every fake input in sample_data/
 ├── sql/                      # saved analysis queries (see below)
 ├── notebooks/explore.ipynb   # read-only DB connection, q("SQL") helper, practice questions Q1-Q5
 ├── sample_data/              # FICTIONAL data mirroring every real input (incl. hashed subscribers, GA4); safe to commit/publish
 └── data/                     # REAL data, git-ignored
-    ├── raw/{substack,mailchimp,linkedin}/
+    ├── inbox/                # DROP EXPORTS HERE; processed ones move to inbox/_done/<date>/
+    ├── raw/{substack,mailchimp,linkedin}/   # full exports keep one <folder>.prev copy
     ├── processed/            # posts.csv, per_post_opens.csv, subscribers.csv, sub_deliveries.csv,
-    │                         # mailchimp/, linkedin/, substack_stats/, ga4/, dashboard/
+    │                         # mailchimp/, mailchimp_archive/, linkedin/, substack_stats/, ga4/, dashboard/,
+    │                         # freshness.csv, pipeline_runs.csv
+    ├── logs/                 # one refresh_<timestamp>.log per run
     ├── ga4-key.json          # GA4 service account key (credential)
+    ├── mailchimp-key         # Mailchimp API key (credential, chmod 600)
     ├── ga4_property_id       # numeric GA4 property ID, read by pull_ga4.py
     ├── .subscriber_hash_key  # HMAC key for hashed subscriber ids
     └── grc.duckdb
@@ -75,16 +91,26 @@ grc-insights-analytics/
 ```bash
 pip install -r requirements.txt
 
-# Monthly refresh (real data)
-python scripts/aggregate_opens.py          # Substack export unzipped into data/raw/substack/
-python scripts/hash_subscribers.py         # same export -> hashed subscriber history
-python scripts/aggregate_mailchimp.py      # Mailchimp export unzipped into data/raw/mailchimp/
-python scripts/process_linkedin.py         # LinkedIn exports dropped into data/raw/linkedin/
-#   Substack Stats-page CSVs go straight into data/processed/substack_stats/ (keep original names)
-python scripts/pull_ga4.py                 # live API pull through yesterday; no export needed
-python scripts/build_db.py
-python scripts/export_dashboard_data.py
-python scripts/build_dashboard_html.py
+# Weekly refresh (automatic: launchd runs this every Monday 08:00)
+python scripts/refresh.py                  # inbox -> GA4 -> Mailchimp -> freshness -> build -> export -> HTML -> queue
+python scripts/refresh.py --no-pulls       # quick rebuild without the API pulls
+#   Manual sources: drop the export (zip or file, as downloaded) into data/inbox/; the next run files it.
+#     Substack account export (.zip), Substack Stats-page CSVs, LinkedIn .xls/.xlsx, Mailchimp export (.zip, backfill only)
+#   Hosted dashboard: when the run says "N files to publish", say "publish the dashboard" in Claude Code.
+#   Exit codes: 0 ok, 2 finished with a failed/stale source, 1 a build step failed (nothing published).
+
+# Pieces, if you need them one at a time
+python scripts/ingest_inbox.py [--dry-run]
+python scripts/pull_ga4.py                 # live API pull through yesterday
+python scripts/pull_mailchimp.py           # ~4 min (2 requests per campaign)
+python scripts/build_db.py && python scripts/export_dashboard_data.py && python scripts/build_dashboard_html.py
+python scripts/publish_dashboard.py [--mark-published]
+
+# Schedule
+zsh ops/install_schedule.sh                # install/update the launchd job (PYTHON=... to override)
+launchctl kickstart gui/$(id -u)/com.grc.insights.refresh   # run it now
+launchctl print gui/$(id -u)/com.grc.insights.refresh       # last exit code, run count
+tail ~/Library/Logs/grc-insights-refresh.log                # launchd-level output
 
 # Sample data (README quick start; verified from a fresh clone)
 python scripts/make_sample_data.py         # only if the generator changed; outputs are committed
@@ -100,7 +126,7 @@ jupyter lab                                # notebooks/explore.ipynb
 ```
 
 Expected `build_db.py` output on real data includes:
-`opens rows with no matching post: 0`, `Substack stats: 581 of 581 posts matched`, `Subscribers: 30,363 deliveries to 474 hashed ids`, `GA4: <first> to <yesterday>, ... page views matched to a post`, `Mailchimp: 204 of 206 export ids matched`, `LinkedIn: 365 days (2025-10-29 to 2026-10-28), 23 posts, 0 promoting Insights`.
+`opens rows with no matching post: 0`, `Substack stats: 581 of 581 posts matched`, `Subscribers: 30,363 deliveries to 474 hashed ids`, `GA4: <first> to <yesterday>, ... page views matched to a post`, `Mailchimp: 219 of 222 export ids matched` (the 3 unmatched are deleted campaigns kept from the archive), `Freshness: 5 of 5 sources up to date`, `LinkedIn: 365 days (2025-10-29 to 2026-10-28), 23 posts, 0 promoting Insights`.
 
 Always open DuckDB **read-only** when exploring; a writable session locks the file and `build_db.py` fails.
 
@@ -109,6 +135,8 @@ Always open DuckDB **read-only** when exploring; a writable session locks the fi
 - DuckDB is 2.0: relations no longer have `fetchone()`. Use `.fetchall()[0]`.
 - Window functions over aggregates need an explicit `GROUP BY col, col` (not `GROUP BY ALL`) or DuckDB raises "Cannot mix aggregates".
 - macOS has no `timeout` command.
+- launchd runs fine from `~/Desktop` here (no folder-access prompt needed; checked Nov 14, 2026). If a scheduled run ever fails with "Operation not permitted", grant the Python binary Full Disk Access or move the repo, then re-run `ops/install_schedule.sh`.
+- Headless `claude -p` has no Artifact tools (Claude Code 2.1.325), which is why hosted publishing is a weekly one-liner.
 
 ## Data sources and their quirks
 
@@ -129,10 +157,20 @@ Always open DuckDB **read-only** when exploring; a writable session locks the fi
 - Keep: `campaigns.csv` (220 campaigns since 2020), `lists/*` (counts only), `geo_data/clicks/*` (clicks per URL), `aggregate_activity/unsub-reasons/*` (category only, free text dropped).
 - Click URLs can contain email addresses: `mailto:` links, and five 2025 newsletter links malformed as `http://name@domain` (the address lands in the URL's host). Both are recorded as domain `email link` with no path.
 - Skip for now: `aggregate_activity/{opened,not_opened,click_activity,...}` and `granular_activity/*` (per-person; raw material for the hashed cohort analysis).
-- Click/unsub files are named `<num>_<slug>.csv`; `campaigns.csv` never uses `<num>`. Join by recreating Mailchimp's slug rule `regexp_replace(lower(Title), '[^a-z0-9]+', '-', 'g')`; for duplicate titles pair lowest num with earliest send (`ROW_NUMBER() OVER (PARTITION BY slug ...)`). 2 ids stay unmatched (a second "January Newsletter", a third "BCG Mentorship"); the build prints them.
+- Click/unsub files are named `<num>_<slug>.csv`; `campaigns.csv` never uses `<num>`. Join by recreating Mailchimp's slug rule `regexp_replace(lower(Title), '[^a-z0-9]+', '-', 'g')`; for duplicate titles pair lowest num with earliest send (`ROW_NUMBER() OVER (PARTITION BY slug ...)`). `<num>` is Mailchimp's `web_id`, so when the API pull provides `Web Id` the build matches on it exactly instead (219 of 222). The 3 left are campaigns deleted from Mailchimp (a second "January Newsletter", an Imperial welcome email, a "BCG Mentorship" duplicate); the build prints them.
 - Send dates look like `May 08, 2020 10:03 am`; rates in the export are text (`"75.00%"`), so recompute from counts.
 - `MEMBER_RATING` is useless here (almost everyone has the default 2): excluded.
 - Audiences are **imported rosters**: exactly one contact ever came via a signup form.
+
+**Mailchimp (Marketing API, `pull_mailchimp.py`, primary since Nov 14, 2026)**
+- Key in `data/mailchimp-key` (owner role, data center `us18`, account time zone America/New_York). Basic auth, any username.
+- Every request names its `fields`, so emails are never requested (members: only status/source/timestamps; unsubscribes: only reason). The no-email check still runs on the outputs.
+- Writes the same 4 CSVs and columns as the export path (`campaigns.csv` gets an extra `Web Id`). `build_db.py` then matches export ids on `web_id` exactly instead of by title.
+- Field traps found by reconciling with the export: export "Unique Clicks" = API `unique_subscriber_clicks` (API `unique_clicks` counts person x link, ~2.6x larger); API status `subscribed` = export folder `members`.
+- **Deleted campaigns vanish from the API.** Their clicks/unsubscribes (3 campaigns, incl. a Feb 2025 "January Newsletter" with 345 Insights clicks) are kept from the frozen, email-free `data/processed/mailchimp_archive/` (from the Oct 30, 2026 export).
+- API clicks are more complete than the export's geo files (~3k clicks had no location). Apr 2025 Insights clicks: 405 (export said 389).
+- `/campaigns` also lists drafts; draft titles can contain email addresses, so never write draft titles anywhere.
+- `aggregate_mailchimp.py` would overwrite the API outputs, so the inbox files a Mailchimp export zip without running it.
 
 **LinkedIn (page analytics .xls/.xlsx)**
 - Read with `engine="calamine"` (pandas deprecated xlrd). Switching produced byte-identical outputs.
@@ -175,6 +213,8 @@ Always open DuckDB **read-only** when exploring; a writable session locks the fi
 | `sub_email_history` | email delivered to a subscriber | `cohort` (quarter of first Insights email), `send_quarter`, `prior_emails`, `opened` |
 | `ga4_traffic_daily` | day x source x medium x campaign x landing page | sessions, engaged_sessions, new_users, views, engagement_seconds |
 | `ga4_pages_daily` | day x page | views, active_users, `post_number` (NULL for non-post pages) |
+| `freshness` | data source | status ok/stale/failed/missing, updated_on, data_through, age_days, action (written by `refresh.py`) |
+| `pipeline_runs` | refresh step x run | status, seconds, note: run history for debugging |
 
 Saved queries in `sql/`: `channel_open_rates`, `insights_clicks_from_mailchimp`, `linkedin_monthly`, `cohort_open_rates`, `open_rate_by_emails_received`, `ga4_traffic_sources`. (The batch-size and send-day analyses now live as queries inside `export_dashboard_data.py`.)
 
@@ -210,7 +250,7 @@ Use the **GRC_UTM_Builder** sheet (Google Sheet, shared with the Marketing Pod) 
    - Open rate (Oct 2025+): 49% solo, 38.5% on 2-4, 33% on 5+. Position within a batch doesn't matter.
    - Correlational, but consistent across three metrics.
 2. **Substack's decline is Substack-specific.** Open rate ~61% (late 2024) -> ~27-31% (spring 2026) while Mailchimp held ~53-68%. Rules out channel-wide causes.
-3. **Mailchimp is the biggest untapped lever.** ~2,530 main list, ~1,360 current members, ~3,470 HS competition vs ~320 Substack recipients. Insights links drove ~250 clicks (Nov 2024), ~680 (two Jan 2025 sends), 389 (Apr 2025), then **nothing since Apr 2025**. A broken Nov 2024 link (two URLs pasted together) got 129 clicks.
+3. **Mailchimp is the biggest untapped lever.** ~2,530 main list, ~1,360 current members, ~3,470 HS competition vs ~320 Substack recipients. Insights links drove ~250 clicks (Nov 2024), ~680 (two Jan 2025 sends), 405 (Apr 2025; 389 in the export's geo files, which miss clicks without a location), then **nothing since Apr 2025**. A broken Nov 2024 link (two URLs pasted together) got 129 clicks.
 4. **LinkedIn: 0 of 23 company posts in the past year promoted Insights.** July engagement rate (53%) is inflated by "Meet the Pod" posts with tagged people (clicks on names). GRC 7,042 followers; peers TAMID 22,812 (254 posts/yr), 180 Degrees 95,697 (28 posts/yr).
 5. **Audience is waiting.** No posts since June 1, 2026, yet +97 followers (465 total). Archive still drew 2,118 views (Sept) and 1,491 (Oct). Views run ~2x email opens.
 6. **Mailchimp lists are rosters, not opt-in.** 1 form signup ever; of 706 unsubscribes, 22 chose "I never signed up", 9 spam reports; a 2023 cold "Sample of 1,000 teacher emails" got 121 bounces. Don't use GRC's Mailchimp for cold outreach; use an outbound tool and check Mailchimp's acceptable use policy.

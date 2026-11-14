@@ -1,6 +1,6 @@
 # GRC Insights Analytics
 
-An analytics pipeline for **GRC Insights**, the Substack publication of Global Research and Consulting Group (GRC), a student-run nonprofit consulting organization. It combines Substack, Mailchimp and LinkedIn exports into a single DuckDB database so the team can measure what drives readership and make publishing decisions with data instead of instinct.
+An analytics pipeline for **GRC Insights**, the Substack publication of Global Research and Consulting Group (GRC), a student-run nonprofit consulting organization. It combines Substack, Mailchimp, LinkedIn and Google Analytics data into a single DuckDB database, refreshed automatically every week, so the team can measure what drives readership and make publishing decisions with data instead of instinct.
 
 ## The problem
 
@@ -8,31 +8,37 @@ GRC Insights had published 570+ articles, but performance data lived in separate
 
 ## Pipeline
 
+Sources with an API are pulled automatically; sources without one go through a drop folder. A scheduled job runs everything weekly.
+
 ```
-Raw exports (contain subscriber emails; never leave the owner's machine)
-        │
-        ▼
-scripts/aggregate_opens.py      → Substack: strips emails, produces per-post counts
-scripts/hash_subscribers.py     → Substack: per-subscriber delivery/open history under keyed hashed ids
-scripts/aggregate_mailchimp.py  → Mailchimp: campaign, link-click and list-growth tables, no emails
-scripts/process_linkedin.py     → LinkedIn: daily page metrics, posts, demographics, peer benchmark
-scripts/pull_ga4.py             → GA4 Data API: daily web sessions by source/medium/campaign and page views
-        │
-        ▼
-data/processed/*.csv          (email-free)
-        │
-        ▼
-scripts/build_db.py           → data/grc.duckdb  (Substack + Mailchimp + LinkedIn tables)
-        │
-        ▼
-sql/*.sql  via  scripts/run_query.py   → analysis
+ APIs (pulled every run)                 Manual exports (drop into data/inbox/)
+ ───────────────────────                 ──────────────────────────────────────
+ pull_ga4.py        GA4 Data API          ingest_inbox.py recognizes each file and runs:
+ pull_mailchimp.py  Mailchimp API           Substack export  → aggregate_opens.py, hash_subscribers.py
+                    (fields= whitelist:     Substack Stats   → copied after a no-email check
+                     no emails requested)   LinkedIn         → process_linkedin.py
+        │                                          │
+        └──────────────────┬───────────────────────┘
+                           ▼
+           data/processed/*.csv   (email-free; same files/columns whichever path made them)
+                           ▼
+           build_db.py → data/grc.duckdb   (22 tables, incl. freshness + pipeline_runs)
+                           ▼
+           export_dashboard_data.py → dashboard CSVs → dashboard.html  (+ hosted dashboard)
+
+ refresh.py runs all of it in order; launchd runs refresh.py every Monday 08:00.
 ```
 
-The build is idempotent: every table is rebuilt from scratch on each run, so new exports can be dropped in without creating duplicates. A built-in anti-join check flags any stats rows that don't match a post.
+**How the weekly run behaves**
+- **Fail soft on inputs, hard on outputs.** If an API pull fails, its folder is restored from a snapshot (so files are never half old, half new), the source is marked `failed`, and the build continues on last week's data. If a build step fails, the run stops and nothing is published.
+- **Freshness is data.** Each run records how old every source is (`freshness.csv`, shown as "Data as of" on the dashboard) and says exactly which export to download when a manual source is more than 35 days old.
+- **Observable.** A log per run, one row per step in `pipeline_runs`, a macOS notification, and exit codes (0 ok, 2 warnings, 1 failed).
+- **Idempotent and deterministic.** Every table is rebuilt from scratch, and exports are fully ordered, so identical data gives byte-identical files. That's what lets the hosted dashboard republish only the files that changed.
+- **Reconciled before switching.** The Mailchimp API pull was diffed against the account export before replacing it. That caught a field with the same name but a different meaning (`unique_clicks`), and campaigns that disappear from the API once deleted (kept from a frozen archive).
 
 ## Data privacy
 
-Raw exports contain subscriber email addresses. They are processed only on the data owner's machine, and only aggregate counts enter the pipeline. `.gitignore` blocks all real data (`data/`, `*.csv`, `*.duckdb`) from being committed. `sample_data/` contains **fake, generated data** so the pipeline can be run by anyone.
+Raw exports contain subscriber email addresses. They are processed only on the data owner's machine, and only aggregate counts enter the pipeline. API pulls go further: they name the exact fields they need, so email addresses are never requested at all. Every processed file passes an automatic no-email check, and the drop folder refuses files that fail it. Subscriber-level analysis uses keyed hashes instead of emails. The scheduled job runs locally, so API keys and raw data never sit on a cloud server. `.gitignore` blocks all real data (`data/`, `*.csv`, `*.duckdb`) from being committed. `sample_data/` contains **fake, generated data** so the pipeline can be run by anyone.
 
 ## Quick start (with fake sample data)
 
@@ -49,16 +55,14 @@ The sample dashboard (`sample_data/dashboard/dashboard.html`) uses fictional dat
 
 ## Running on real data
 
-1. Unzip the Substack export into `data/raw/substack/`.
-2. `python scripts/aggregate_opens.py` → writes email-free CSVs to `data/processed/`
-   Optional, for cohort analysis: `python scripts/hash_subscribers.py` → `subscribers.csv` and `sub_deliveries.csv` with hashed ids. The hash key is created at `data/.subscriber_hash_key`; keep it private and reuse it so ids stay stable across exports.
-   Optional: put LinkedIn exports in `data/raw/linkedin/` and run `python scripts/process_linkedin.py`
-   Optional: unzip the Mailchimp export into `data/raw/mailchimp/` and run `python scripts/aggregate_mailchimp.py`
-   Optional: `python scripts/pull_ga4.py` pulls web traffic from the GA4 Data API. It needs a service account key at `data/ga4-key.json` (added as a Viewer on the GA4 property) and the property ID in `data/ga4_property_id`; setup steps are at the top of the script.
-3. `python scripts/build_db.py`
-4. `python scripts/run_query.py sql/<query>.sql`
-5. `python scripts/export_dashboard_data.py` → small aggregated CSVs in `data/processed/dashboard/` for the dashboard
-6. `python scripts/build_dashboard_html.py` → `data/processed/dashboard/dashboard.html`, a standalone dashboard that opens in any browser
+One-time setup: API credentials in `data/` (`ga4-key.json` + `ga4_property_id`, `mailchimp-key`; setup steps are at the top of `pull_ga4.py` and `pull_mailchimp.py`), then `zsh ops/install_schedule.sh` to schedule the weekly run.
+
+After that:
+1. **Every Monday** `scripts/refresh.py` runs on its own (or run it any time).
+2. **When a manual source is stale**, download its export and drop it, as is, into `data/inbox/`.
+3. **When the run reports changed dashboard files**, publish them to the hosted dashboard (see `ops/publish_dashboard_prompt.md`).
+
+Explore with `python scripts/run_query.py sql/<query>.sql`, `duckdb -readonly data/grc.duckdb`, or `notebooks/explore.ipynb`.
 
 To inspect a new export without exposing its contents, `python scripts/inventory_files.py <folder>` lists each CSV's columns and row count and flags files that contain email addresses.
 
@@ -87,8 +91,9 @@ To inspect a new export without exposing its contents, `python scripts/inventory
 - [x] Dashboard (GRC Insights Growth Dashboard, fed by `scripts/export_dashboard_data.py`)
 - [x] Cohort open-rate chart on the dashboard (shown when hashed subscriber data exists)
 - [x] Web traffic (GA4) section on the dashboard: sessions per day and by source
+- [x] Automated weekly refresh: Mailchimp API, drop folder for manual exports, freshness tracking, launchd schedule
 - [ ] Weekly-cadence experiment: one email per week vs. historical batch sends
 
 ## Tech
 
-Python, pandas, DuckDB, SQL (window functions, anti-joins)
+Python, pandas, DuckDB, SQL (window functions, anti-joins), REST APIs (GA4 Data API, Mailchimp Marketing API), launchd scheduling

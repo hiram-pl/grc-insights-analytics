@@ -7,15 +7,19 @@ Last updated **Nov 14, 2026**. Conventions, data quirks and privacy rules are in
 
 **Step 1 (instrument everything) is complete.** All four data sources (Substack, Mailchimp, LinkedIn, GA4) feed one DuckDB database (20 tables). Metrics and a UTM convention are defined, and a standalone dashboard is generated from the database. The main open question from Step 1 is answered: the open-rate decline is **subscriber fatigue, not list composition**.
 
+**The pipeline now refreshes itself weekly** (Nov 14, 2026): launchd runs `refresh.py` every Monday 08:00, pulling GA4 and Mailchimp by API and filing any manual exports dropped into `data/inbox/`. The hosted dashboard is updated with a one-line "publish the dashboard" request.
+
 **Step 2 (experiments and new projects) is next**, starting with the weekly-cadence relaunch.
 
 | Source | How it gets in | Data covers | Freshness |
 |---|---|---|---|
-| Substack account export | `aggregate_opens.py`, `hash_subscribers.py` | emails Sept 2024 - June 1, 2026 (102 emailed posts) | export of Oct 30, 2026 |
-| Substack Stats page | CSVs into `data/processed/substack_stats/` | followers daily, views monthly, per-post stats | export of Oct 31, 2026 |
-| Mailchimp account export | `aggregate_mailchimp.py` | 220 campaigns since 2020 | export of Oct 30, 2026 |
-| LinkedIn page analytics | `process_linkedin.py` | Oct 29, 2025 - Oct 28, 2026 | export of Oct 30, 2026 |
-| GA4 (Data API) | `pull_ga4.py` (live) | Oct 30, 2026 onward | pulled Nov 14, 2026 (through Nov 13) |
+| Substack account export | drop zip in `data/inbox/` (manual) | emails Sept 2024 - June 1, 2026 (102 emailed posts) | export of Oct 30, 2026 |
+| Substack Stats page | drop CSVs in `data/inbox/` (manual) | followers daily, views monthly, per-post stats | export of Oct 31, 2026 |
+| Mailchimp | `pull_mailchimp.py` (API, **automated weekly**) | 220 campaigns since 2020 (+3 deleted, from archive) | pulled Nov 14, 2026 |
+| LinkedIn page analytics | drop exports in `data/inbox/` (manual) | Oct 29, 2025 - Oct 28, 2026 | export of Oct 30, 2026 |
+| GA4 (Data API) | `pull_ga4.py` (API, **automated weekly**) | Oct 30, 2026 onward | pulled Nov 14, 2026 (through Nov 13) |
+
+Each run's per-source status is in `data/processed/freshness.csv` (the `freshness` table and the dashboard's "Data as of" line).
 
 All real data stays local and git-ignored. Only fictional `sample_data/` is committed.
 
@@ -45,11 +49,22 @@ All real data stays local and git-ignored. Only fictional `sample_data/` is comm
 - **Full refresh** run with all sources; `CLAUDE.md` updated and this file added.
 - **Hosted dashboard**: added the Subscriber fatigue and Web traffic (GA4) sections and three datasets to the Claude-hosted dashboard. No Google Analytics connector exists in Claude.ai, so GA4 there is refreshed on request rather than live.
 
+### Nov 14, 2026: Automated pipeline
+- **Mailchimp API** (`517cd6a`): `pull_mailchimp.py` writes the same CSVs as the export path, so nothing downstream changed. Every request names its `fields`, so emails are never requested. Reconciling against the Oct 30 export found:
+  - `unique_clicks` means something different in the API (person x link); `unique_subscriber_clicks` matches the export.
+  - Deleted campaigns disappear from the API. Three of them (incl. 345 Insights clicks from Feb 2025) are kept from a frozen archive.
+  - The API is more complete than the export's geo click files. Apr 2025 Insights clicks: 405 (was 389). No conclusions changed.
+  - Campaigns now match exactly by `web_id`: 219 of 222 (the 3 left are the deleted ones).
+- **Drop folder** (`ad49e6f`): `ingest_inbox.py` recognizes Substack, Stats, LinkedIn and Mailchimp exports, files them, runs their processor and moves them to `_done/`. It has safe unzipping and a no-email gate for `data/processed/`.
+- **Orchestrator** (`8caa5dd`): `refresh.py` runs every step with a fail-soft/fail-hard policy, a lock, logs, `pipeline_runs`, `freshness`, a notification and exit codes. Tested with a bad API key (data restored, run continued) and a locked database (stopped, nothing published).
+- **Hosted dashboard** (`a29f2d7`): headless `claude -p` lacks the Artifact tools, so the run queues changed CSVs and the owner says "publish the dashboard". Added a "Data as of" line and the `freshness` dataset. 4 datasets that hadn't been updated since Oct 31 were brought current. Made exports deterministic (tied rows had reordered on every run).
+- **Schedule** (`6696f43`): launchd job, Monday 08:00, installed with `ops/install_schedule.sh`. The test run via `launchctl kickstart` finished with every step ok, exit 0.
+
 ## Findings to date
 
 1. **Batch sending costs subscribers and views.** The 6 days with 5+ emails averaged -7 followers/day (42 lost, ~45% of all losses since Sept 2024). Median views per post: 351 solo, 250 on 2-4 email days, 204 on 5+ days. Open rate: 49% / 38.5% / 33%.
 2. **Substack's decline is Substack-specific.** Open rate ~61% -> ~27-31% while Mailchimp held ~53-68%.
-3. **Mailchimp is the biggest untapped lever.** Lists of ~1,360-3,470 vs ~320 Substack recipients; Insights links drove hundreds of clicks per send, but none since Apr 2025.
+3. **Mailchimp is the biggest untapped lever.** Lists of ~1,360-3,470 vs ~320 Substack recipients; Insights links drove hundreds of clicks per send (Apr 2025: 405 via the API), but none since Apr 2025.
 4. **LinkedIn: 0 of 23 company posts in the past year promoted Insights.** GA4 confirms it: 3 LinkedIn sessions in 15 days.
 5. **The audience is waiting.** +97 followers with no posts since June 1, 2026; the archive still draws ~1,500-2,100 views a month.
 6. **Mailchimp lists are imported rosters**, not opt-in. Don't use them for cold outreach.
@@ -62,8 +77,9 @@ All real data stays local and git-ignored. Only fictional `sample_data/` is comm
 
 - [ ] **Weekly-cadence experiment**: compare views per post, send-day follower change and per-cohort open rate against the batch-era baseline; watch whether the 107 never-emailed subscribers hold their open rate.
 - [ ] **UTM-tagged promotion** on LinkedIn and in the member Mailchimp newsletter; read results in `ga4_traffic_sources.sql` and the dashboard (needs the newsletter owner for Mailchimp).
-- [ ] **Refresh the hosted dashboard** periodically (weekly or monthly): GA4 can't be live there, so its files are refreshed on request (steps in `CLAUDE.md` > Dashboards).
-- [ ] **Fresh exports** for Substack, Mailchimp and LinkedIn before the next analysis (current ones are from Oct 30-31).
+- [x] **Automate the refresh**: weekly launchd job; hosted dashboard via "publish the dashboard" when the run reports changes.
+- [ ] **Fresh exports** for Substack and LinkedIn (Oct 30-31); drop them in `data/inbox/`. `freshness.csv` will flag them as stale after Dec 4-5, 2026. Mailchimp and GA4 now refresh themselves.
+- [ ] Re-test headless `claude -p` for Artifact tools after Claude Code updates; if available, make the hosted publish fully automatic.
 - [ ] **Further projects** for target roles, as chosen by the repo owner.
 
 ## Known caveats
@@ -72,4 +88,4 @@ All real data stays local and git-ignored. Only fictional `sample_data/` is comm
 - GA4 undercounts (ad blockers, inbox reads) and starts Oct 30, 2026. Use it for proportions by source, and Substack for totals.
 - The batch-size findings are correlational, though consistent across three metrics.
 - Small samples: most A/B-style comparisons won't reach significance, so test for big effects and make directional calls.
-- 2 Mailchimp export ids remain unmatched to a campaign (duplicate titles); their clicks have no send date.
+- 3 Mailchimp campaign ids are unmatched: campaigns deleted from Mailchimp, kept from the archive. Their clicks have no send date.
