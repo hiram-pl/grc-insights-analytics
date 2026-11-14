@@ -43,6 +43,7 @@ All real data stays local and git-ignored. Only fictional `sample_data/` is comm
 - **Privacy fix** (`9bf882f`): the full refresh tripped `aggregate_mailchimp.py`'s no-email check. Five newsletter links were malformed as `http://name@domain`, putting addresses in the domain column. Such links are now recorded as `email link`. Nothing left the machine.
 - **LinkedIn reader** (`0b4709e`): switched from deprecated `xlrd` to `calamine`; outputs byte-identical.
 - **Full refresh** run with all sources; `CLAUDE.md` updated and this file added.
+- **Hosted dashboard**: added the Subscriber fatigue and Web traffic (GA4) sections and three datasets to the Claude-hosted dashboard. No Google Analytics connector exists in Claude.ai, so GA4 there is refreshed on request rather than live.
 
 ## Findings to date
 
@@ -61,7 +62,7 @@ All real data stays local and git-ignored. Only fictional `sample_data/` is comm
 
 - [ ] **Weekly-cadence experiment**: compare views per post, send-day follower change and per-cohort open rate against the batch-era baseline; watch whether the 107 never-emailed subscribers hold their open rate.
 - [ ] **UTM-tagged promotion** on LinkedIn and in the member Mailchimp newsletter; read results in `ga4_traffic_sources.sql` and the dashboard (needs the newsletter owner for Mailchimp).
-- [ ] **Claude-hosted dashboard**: add the cohort and GA4 CSVs (it still has only the original 8).
+- [ ] **Refresh the hosted dashboard** periodically (weekly or monthly): GA4 can't be live there, so its files are refreshed on request (steps in `CLAUDE.md` > Dashboards).
 - [ ] **Fresh exports** for Substack, Mailchimp and LinkedIn before the next analysis (current ones are from Oct 30-31).
 - [ ] **Further projects** for target roles, as chosen by the repo owner.
 

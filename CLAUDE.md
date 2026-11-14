@@ -225,7 +225,15 @@ Use the **GRC_UTM_Builder** sheet (Google Sheet, shared with the Marketing Pod) 
 
 ## Dashboards
 
-- **Claude-hosted:** "GRC Insights Growth Dashboard", https://claude.ai/artifact/58LF778yncSfUDhxBcGH9U. Private until shared; anyone shared with can download its data files. Refresh by replacing the 8 CSVs. **Does not yet include** the cohort or GA4 sections.
+- **Claude-hosted:** "GRC Insights Growth Dashboard", https://claude.ai/artifact/58LF778yncSfUDhxBcGH9U. Private until shared; anyone shared with can download its data files. Built from the Claude "Dashboard" artifact type: its page (`files/index.html`) and its 11 datasets live in the artifact's store, and each dataset is an attached CSV with the **same id as the CSV name** in `data/processed/dashboard/` (8 originals + `cohort_open_rates`, `ga4_daily`, `ga4_channels`, added Nov 14, 2026).
+- **No live GA4:** Claude.ai has no Google Analytics connector (checked Nov 14, 2026), so the hosted dashboard can't query GA4 live. It's refreshed on request instead. A self-hosted GA4 MCP server was judged not worth the upkeep; Looker Studio is the option if the team needs live GA4 between refreshes.
+- **"Refresh the hosted dashboard"** means:
+  1. `python scripts/pull_ga4.py && python scripts/build_db.py && python scripts/export_dashboard_data.py` (plus the processing scripts first if new Substack/Mailchimp/LinkedIn exports arrived).
+  2. For each CSV in `data/processed/dashboard/` that changed (compare with the attached copy), upload it with the Artifact tool: `publish` with `url`, `asset: true`, `file_path` (one CSV per call). Note the returned `/_blob/<id>`.
+  3. With ArtifactData, read `datasets/<id>`, then `update` it, pinned to its version: `source.url` = the new blob, `updated: {at: <UTC now>, by: "grc-insights-analytics export_dashboard_data.py"}`, `edit: {via: "claude", at: <UTC now>}`. Use one `batch` for all of them.
+  4. Delete each replaced blob (`Artifact` `delete` with `url` and the old asset id as `path`), so outdated rows don't stay downloadable.
+  5. Don't touch `files/index.html` for a data refresh. Charts, sentences and KPIs recompute from the datasets. For page changes, re-read it first (the owner may have edited it by hand) and follow the type's `one-writer` rules.
+  6. With the dashboard open, read `data/users/me/check` and `runs` via ArtifactData for errors.
 - **Standalone:** `build_dashboard_html.py` -> `data/processed/dashboard/dashboard.html` (real, internal) and `sample_data/dashboard/dashboard.html` (fictional, publishable via GitHub Pages once the repo is public). Loads Plotly from CDN.
 - Headline: "Relaunch at one email a week." KPIs: followers + 30-day change, latest-month views, Substack vs Mailchimp open rate, LinkedIn posts linking to Insights.
 - Sections: Reach, Sending pattern, **Subscriber fatigue** (open rate by cohort; optional, needs hashed subscriber data), **Web traffic (GA4)** (sessions per day, sessions by channel; optional, needs GA4 pull), Channels, every emailed post, definitions. Optional sections are skipped cleanly when their data is missing.
@@ -237,6 +245,5 @@ Use the **GRC_UTM_Builder** sheet (Google Sheet, shared with the Marketing Pod) 
 - **Other projects**: repo owner may specify what other projects they want to work on.
 - **Weekly cadence** for the relaunch: one email at a time; bundle backlogs into one digest. Compare views/post, send-day follower change and **per-cohort open rate** against the batch-era baseline. First relaunch sends matter: the fall 2026 cohort (107 never-emailed subscribers) is subscribed and waiting. Track whether its open rate holds near its starting level instead of the 58% -> 32% slide the Q4 2025 cohort showed.
 - **UTM results in GA4:** once tagged links go out, they appear by campaign in `sql/ga4_traffic_sources.sql` and in the dashboard's GA4 section.
-- **Claude-hosted dashboard:** add the cohort and GA4 CSVs.
 - **Insights section in the member/GMT Mailchimp newsletter** with tagged links (`mailchimp/email/gmt-newsletter-yyyy-mm`); read sessions in GA4. Needs the newsletter owner.
 - **LinkedIn promotion** of every article with a tagged link; tag the author and branch.
