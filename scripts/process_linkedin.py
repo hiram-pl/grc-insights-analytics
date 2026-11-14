@@ -42,9 +42,9 @@ def export_time(path):
 
 def read_sheet(path, sheet):
     """LinkedIn sometimes puts a description sentence above the header row; skip it if so."""
-    raw = pd.read_excel(path, sheet_name=sheet, header=None)
+    raw = pd.read_excel(path, sheet_name=sheet, header=None, engine="calamine")
     header_row = 1 if raw.iloc[0].notna().sum() == 1 else 0
-    df = pd.read_excel(path, sheet_name=sheet, header=header_row)
+    df = pd.read_excel(path, sheet_name=sheet, header=header_row, engine="calamine")
     df.columns = [snake(c) for c in df.columns]
     return df
 
@@ -60,7 +60,7 @@ content_daily, followers_daily, visitors_daily, posts, demo, comp = [], [], [], 
 for f in sorted(src.glob("*.xls*")):
     exported = export_time(f)
     name = f.name.lower()
-    sheets = pd.ExcelFile(f).sheet_names
+    sheets = pd.ExcelFile(f, engine="calamine").sheet_names
 
     if "_content_" in name:
         d = read_sheet(f, "Metrics")
@@ -89,9 +89,9 @@ for f in sorted(src.glob("*.xls*")):
             }))
 
     elif "competitor" in name:
-        raw = pd.read_excel(f, header=None)
+        raw = pd.read_excel(f, header=None, engine="calamine")
         start, end = pd.to_datetime(raw.iloc[0, 0]), pd.to_datetime(raw.iloc[0, 1])
-        c = pd.read_excel(f, header=1)
+        c = pd.read_excel(f, header=1, engine="calamine")
         c.columns = [snake(x) for x in c.columns]
         comp.append(c.assign(period_start=start, period_end=end, exported_at=exported))
 
