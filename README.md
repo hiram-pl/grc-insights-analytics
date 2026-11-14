@@ -2,8 +2,6 @@
 
 An analytics pipeline for **GRC Insights**, the Substack publication of Global Research and Consulting Group (GRC), a student-run nonprofit consulting organization. It combines Substack, Mailchimp and LinkedIn exports into a single DuckDB database so the team can measure what drives readership and make publishing decisions with data instead of instinct.
 
-<!-- Before making this repo public: confirm with GRC leadership that the findings below are OK to share. -->
-
 ## The problem
 
 GRC Insights had published 570+ articles, but performance data lived in separate tools (Substack, LinkedIn, Mailchimp) with no shared view. Substack's dashboard shows numbers one post at a time and has no API for publication stats, so questions like "does sending several emails in one day hurt open rates?" couldn't be answered.
