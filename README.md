@@ -18,6 +18,7 @@ scripts/aggregate_opens.py      → Substack: strips emails, produces per-post c
 scripts/hash_subscribers.py     → Substack: per-subscriber delivery/open history under keyed hashed ids
 scripts/aggregate_mailchimp.py  → Mailchimp: campaign, link-click and list-growth tables, no emails
 scripts/process_linkedin.py     → LinkedIn: daily page metrics, posts, demographics, peer benchmark
+scripts/pull_ga4.py             → GA4 Data API: daily web sessions by source/medium/campaign and page views
         │
         ▼
 data/processed/*.csv          (email-free)
@@ -55,6 +56,7 @@ The sample dashboard (`sample_data/dashboard/dashboard.html`) uses fictional dat
    Optional, for cohort analysis: `python scripts/hash_subscribers.py` → `subscribers.csv` and `sub_deliveries.csv` with hashed ids. The hash key is created at `data/.subscriber_hash_key`; keep it private and reuse it so ids stay stable across exports.
    Optional: put LinkedIn exports in `data/raw/linkedin/` and run `python scripts/process_linkedin.py`
    Optional: unzip the Mailchimp export into `data/raw/mailchimp/` and run `python scripts/aggregate_mailchimp.py`
+   Optional: `python scripts/pull_ga4.py` pulls web traffic from the GA4 Data API. It needs a service account key at `data/ga4-key.json` (added as a Viewer on the GA4 property) and the property ID in `data/ga4_property_id`; setup steps are at the top of the script.
 3. `python scripts/build_db.py`
 4. `python scripts/run_query.py sql/<query>.sql`
 5. `python scripts/export_dashboard_data.py` → small aggregated CSVs in `data/processed/dashboard/` for the dashboard
@@ -83,6 +85,7 @@ To inspect a new export without exposing its contents, `python scripts/inventory
 - [x] Load LinkedIn page analytics (overlapping exports de-duplicated, newest wins)
 - [x] UTM tagging convention (UTM builder sheet)
 - [x] Connect GA4 to Substack so UTM-tagged visits are measurable
+- [x] Pull GA4 traffic into DuckDB via the Data API (`ga4_traffic_daily`, `ga4_pages_daily`; data starts Oct 30, 2026)
 - [x] Dashboard (GRC Insights Growth Dashboard, fed by `scripts/export_dashboard_data.py`)
 - [x] Cohort open-rate chart on the dashboard (shown when hashed subscriber data exists)
 - [ ] Weekly-cadence experiment: one email per week vs. historical batch sends

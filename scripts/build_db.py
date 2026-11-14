@@ -12,6 +12,7 @@ Tables
                post_stats, sub_followers_daily, sub_views_monthly, sub_audience_location
                (stats tables built only if <data dir>/substack_stats/ has Stats-page exports)
                subscribers, sub_email_history  (hashed ids; built only if sub_deliveries.csv exists)
+    GA4:       ga4_traffic_daily, ga4_pages_daily  (built only if <data dir>/ga4/ has pull_ga4.py output)
     Mailchimp: mc_campaigns, mc_link_clicks, mc_list_growth, mc_unsub_reasons
                (built only if <data dir>/mailchimp/campaigns.csv exists)
     LinkedIn:  li_daily, li_posts, li_demographics, li_competitors
@@ -179,6 +180,33 @@ if (data_dir / "sub_deliveries.csv").exists():
     """)
     n_subs, n_rows = con.sql("SELECT COUNT(DISTINCT sub_id), COUNT(*) FROM sub_email_history").fetchall()[0]
     print(f"Subscribers: {n_rows:,} deliveries to {n_subs} hashed ids")
+
+# GA4 web traffic (optional: run scripts/pull_ga4.py). Counts only.
+if (data_dir / "ga4" / "traffic_daily.csv").exists():
+    con.sql(f"""
+    -- Sessions by day, traffic source and landing page. Campaign = utm_campaign when tagged.
+    CREATE OR REPLACE TABLE ga4_traffic_daily AS
+    SELECT date::DATE AS date, source, medium, campaign, landing_page,
+           sessions::INTEGER AS sessions, engaged_sessions::INTEGER AS engaged_sessions,
+           new_users::INTEGER AS new_users, views::INTEGER AS views,
+           engagement_seconds::INTEGER AS engagement_seconds
+    FROM read_csv('{csv("ga4/traffic_daily.csv")}', all_varchar = true);
+
+    -- Page views by day, matched to Substack posts where the path is /p/<slug>.
+    -- active_users can't be summed across days (the same person counts once per day).
+    CREATE OR REPLACE TABLE ga4_pages_daily AS
+    SELECT g.date::DATE AS date, g.page, p.post_number,
+           g.views::INTEGER AS views, g.active_users::INTEGER AS active_users
+    FROM read_csv('{csv("ga4/pages_daily.csv")}', all_varchar = true) g
+    LEFT JOIN posts p
+      ON regexp_extract(g.page, '^/p/([^/?#]+)', 1) = split_part(p.post_id, '.', 2);
+    """)
+    first, last, sessions = con.sql("SELECT MIN(date), MAX(date), SUM(sessions) FROM ga4_traffic_daily").fetchall()[0]
+    post_views, all_views = con.sql("""SELECT SUM(views) FILTER (WHERE post_number IS NOT NULL), SUM(views)
+                                       FROM ga4_pages_daily""").fetchall()[0]
+    print(f"GA4: {first} to {last}, {sessions:,} sessions; {post_views or 0:,} of {all_views:,} page views matched to a post")
+else:
+    print("GA4: no ga4/traffic_daily.csv found, skipped")
 
 # ---------------------------------------------------------------------------
 # Mailchimp (optional)
