@@ -15,24 +15,17 @@ Writes to data/processed/mailchimp/:
     unsub_reasons.csv       unsubscribe reason counts per campaign (free-text dropped)
 """
 
-import re
 import sys
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import pandas as pd
+
+from mc_common import assert_no_emails, clean_url, redact
 
 REPO = Path(__file__).resolve().parents[1]
 src = Path(sys.argv[1]) if len(sys.argv) > 1 else REPO / "data" / "raw" / "mailchimp"
 out = REPO / "data" / "processed" / "mailchimp"
 out.mkdir(parents=True, exist_ok=True)
-
-EMAIL = re.compile(r"[^@\s,;:<>\"']+@[^@\s,;:<>\"']+\.[a-z]{2,}", re.I)
-
-
-def redact(value):
-    return EMAIL.sub("[email]", value) if isinstance(value, str) else value
-
 
 def campaign_key(path):
     """'12816693_november-newsletter.csv' -> ('12816693', 'november-newsletter')"""
@@ -90,13 +83,8 @@ for f in find("geo_data/clicks/*.csv"):
     if df.empty or "Url" not in df:
         continue
     num, slug = campaign_key(f)
-    parts = df["Url"].fillna("").map(urlsplit)
-    # Links that carry an email address: proper mailto: links, and malformed ones written as
-    # http://name@domain (the address lands in netloc). Keep only the fact it was an email link.
-    is_email = parts.map(lambda p: p.scheme == "mailto" or "@" in p.netloc or bool(EMAIL.search(p.path)))
-    df["domain"] = parts.map(lambda p: p.netloc.lower().removeprefix("www.") or p.scheme)
-    df["path"] = parts.map(lambda p: p.path)
-    df.loc[is_email, ["domain", "path"]] = ["email link", ""]
+    # clean_url drops query strings and turns links carrying an email address into 'email link'
+    df[["domain", "path"]] = df["Url"].fillna("").map(clean_url).tolist()
     df["clicks"] = pd.to_numeric(df["Clicks"], errors="coerce").fillna(0)
     agg = df.groupby(["domain", "path"], as_index=False)["clicks"].sum()
     click_rows.append(agg.assign(campaign_num=num, campaign_slug=slug))
@@ -124,7 +112,5 @@ if unsub_rows:
     print("unsub_reasons.csv written")
 
 # Final safety check: no output file may contain an email address.
-for f in out.glob("*.csv"):
-    text = f.read_text(errors="ignore")
-    assert not EMAIL.search(text), f"Email address found in {f.name}; do not share it."
+assert_no_emails(out)
 print(f"\nAll outputs in {out.relative_to(REPO)} passed the no-email check.")

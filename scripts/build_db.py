@@ -284,6 +284,17 @@ if (data_dir / "mailchimp" / "campaigns.csv").exists():
     LEFT JOIN camps_ranked c USING (slug, rk);
     """)
 
+    # The API pull (pull_mailchimp.py) also writes each campaign's web_id, the number Mailchimp
+    # uses in file names. Where we have it, match on it directly: exact, no title guessing.
+    # Ids still unmatched after this are campaigns deleted from Mailchimp (kept from the archive).
+    if "Web Id" in con.sql(f"DESCRIBE SELECT * FROM read_csv_auto('{csv("mailchimp/campaigns.csv")}')").df()["column_name"].values:
+        con.sql(f"""
+        CREATE OR REPLACE TABLE mc_campaign_ids AS
+        SELECT i.campaign_num, i.slug, w."Unique Id" AS campaign_uid
+        FROM (SELECT DISTINCT campaign_num::BIGINT AS campaign_num, slug FROM mc_campaign_ids) i
+        LEFT JOIN read_csv_auto('{csv("mailchimp/campaigns.csv")}') w ON w."Web Id" = i.campaign_num;
+        """)
+
     total, missing = con.sql("""
         SELECT COUNT(*), COUNT(*) FILTER (WHERE campaign_uid IS NULL) FROM mc_campaign_ids
     """).fetchall()[0]

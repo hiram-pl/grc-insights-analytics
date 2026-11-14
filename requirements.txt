@@ -5,3 +5,4 @@ plotly>=5.20
 jupyterlab>=4.0
 google-analytics-data>=0.18
 python-calamine>=0.3
+requests>=2.31
