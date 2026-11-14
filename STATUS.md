@@ -63,7 +63,6 @@ All real data stays local and git-ignored. Only fictional `sample_data/` is comm
 - [ ] **UTM-tagged promotion** on LinkedIn and in the member Mailchimp newsletter; read results in `ga4_traffic_sources.sql` and the dashboard (needs the newsletter owner for Mailchimp).
 - [ ] **Claude-hosted dashboard**: add the cohort and GA4 CSVs (it still has only the original 8).
 - [ ] **Fresh exports** for Substack, Mailchimp and LinkedIn before the next analysis (current ones are from Oct 30-31).
-- [ ] **CMO approval** before making the repo public or sharing figures (see the note in `README.md`).
 - [ ] **Further projects** for target roles, as chosen by the repo owner.
 
 ## Known caveats

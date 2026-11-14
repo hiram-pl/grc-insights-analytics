@@ -30,7 +30,7 @@ Skill level: comfortable reading SQL (about a third of LeetCode SQL 50), though 
 - Subscriber-level analysis uses **hashed IDs**, never emails. `hash_subscribers.py` replaces each email with an HMAC-SHA256 hash keyed by `data/.subscriber_hash_key` (git-ignored, created on first run). Anyone with the key plus a list of emails could re-link IDs to people, so the key never leaves the owner's machine; reuse it on later exports so IDs stay stable.
 - The GA4 service account key (`data/ga4-key.json`) is a credential: git-ignored, `chmod 600`, never pasted into chats or tools.
 - Privacy checks are a feature: if `aggregate_mailchimp.py` (or any script) stops on its no-email check, find and fix the cause; never weaken or skip the check.
-- The **code is the owner's; the data is GRC's.** Repo stays private until the CMO approves; publish only `sample_data/` (fictional) and CMO-approved figures.
+- The **code is the owner's; the data is GRC's.** Commit and publish only `sample_data/` (fictional), never real data.
 - Clear notebook outputs before committing (`jupyter nbconvert --clear-output --inplace notebooks/explore.ipynb`).
 - Never put names, emails or anything private in a UTM.
 
