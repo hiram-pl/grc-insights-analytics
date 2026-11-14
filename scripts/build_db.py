@@ -359,5 +359,17 @@ if (data_dir / "linkedin" / "daily.csv").exists():
 else:
     print("LinkedIn: no linkedin/daily.csv found, skipped")
 
+# ---------------------------------------------------------------------------
+# Pipeline bookkeeping (optional: written by refresh.py)
+# ---------------------------------------------------------------------------
+if (data_dir / "freshness.csv").exists():
+    con.sql(f"""CREATE OR REPLACE TABLE freshness AS
+                SELECT * FROM read_csv_auto('{csv("freshness.csv")}')""")
+    n_ok, n = con.sql("SELECT COUNT(*) FILTER (WHERE status = 'ok'), COUNT(*) FROM freshness").fetchall()[0]
+    print(f"Freshness: {n_ok} of {n} sources up to date")
+if (data_dir / "pipeline_runs.csv").exists():
+    con.sql(f"""CREATE OR REPLACE TABLE pipeline_runs AS
+                SELECT * FROM read_csv_auto('{csv("pipeline_runs.csv")}')""")
+
 print(f"Built {db_path.relative_to(REPO)}")
 con.close()

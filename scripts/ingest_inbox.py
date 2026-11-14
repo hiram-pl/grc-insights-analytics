@@ -16,12 +16,13 @@ Prints no cell values: unknown files are described by name, size and an email fl
 """
 
 import argparse
+import os
 import re
 import shutil
 import subprocess
 import sys
 import zipfile
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from mc_common import EMAIL
@@ -72,6 +73,11 @@ def safe_extract(zip_path, dest):
             if not (dest / name).resolve().is_relative_to(dest):
                 raise ValueError(f"unsafe path in zip: {name}")
         z.extractall(dest)
+        # extractall stamps every file with "now"; restore the dates stored in the zip so
+        # refresh.py can tell how old an export really is.
+        for info in z.infolist():
+            ts = datetime(*info.date_time).timestamp()
+            os.utime(dest / info.filename, (ts, ts))
 
 
 def replace_folder_with_zip(dest):

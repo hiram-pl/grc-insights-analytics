@@ -189,6 +189,14 @@ if ga4 is not None:
       "(10+ seconds, 2+ pages, or a key event). UTM-tagged links are counted under their source.", "ga4_channels")}
 </div>"""
 
+fresh_file = src / "freshness.csv"  # optional: written when refresh.py runs
+fresh_line = ""
+if fresh_file.exists():
+    fr = pd.read_csv(fresh_file)
+    parts = [f"{r.source} {'through ' + str(r.data_through) if pd.notna(r.data_through) else r.status}"
+             + ("" if r.status == "ok" else f" <b class='bad'>({r.status})</b>") for r in fr.itertuples()]
+    fresh_line = f"<p class=\"note\">Data as of: {' · '.join(parts)}</p>"
+
 label = "SAMPLE DATA (fictional)" if args.sample else "Internal: GRC data, do not share publicly"
 page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -218,6 +226,7 @@ page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 </style></head><body><div class="wrap">
 <span class="tag">{label} · built {datetime.now():%b %d, %Y}</span>
 <h1>GRC Insights growth dashboard</h1>
+{fresh_line}
 <p class="take">Relaunch at one email a week. On days with 5+ emails, Insights lost <b>{lost_per_day:.1f}</b> followers on average,
 and those posts drew a median of <b>{batch_views:,}</b> views, against <b>{solo_views:,}</b> for posts sent alone.</p>
 

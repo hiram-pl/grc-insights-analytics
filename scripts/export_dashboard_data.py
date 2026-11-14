@@ -141,6 +141,15 @@ else:
     for f in GA4_FILES:
         (out / f"{f}.csv").unlink(missing_ok=True)
 
+# Data freshness per source (optional: written by refresh.py).
+if "freshness" in have:
+    queries["freshness"] = """
+        SELECT source, kind, status, strftime(updated_on, '%Y-%m-%d') AS updated_on,
+               data_through::VARCHAR AS data_through, age_days, action
+        FROM freshness ORDER BY kind, source"""
+else:
+    (out / "freshness.csv").unlink(missing_ok=True)
+
 for name, sql in queries.items():
     df = con.sql(sql).df()
     df = df.drop(columns=[c for c in ("sort_order",) if c in df.columns])
