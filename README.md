@@ -15,6 +15,7 @@ Raw exports (contain subscriber emails; never leave the owner's machine)
         │
         ▼
 scripts/aggregate_opens.py      → Substack: strips emails, produces per-post counts
+scripts/hash_subscribers.py     → Substack: per-subscriber delivery/open history under keyed hashed ids
 scripts/aggregate_mailchimp.py  → Mailchimp: campaign, link-click and list-growth tables, no emails
 scripts/process_linkedin.py     → LinkedIn: daily page metrics, posts, demographics, peer benchmark
         │
@@ -49,6 +50,7 @@ The sample dashboard (`sample_data/dashboard/dashboard.html`) uses fictional dat
 
 1. Unzip the Substack export into `data/raw/substack/`.
 2. `python scripts/aggregate_opens.py` → writes email-free CSVs to `data/processed/`
+   Optional, for cohort analysis: `python scripts/hash_subscribers.py` → `subscribers.csv` and `sub_deliveries.csv` with hashed ids. The hash key is created at `data/.subscriber_hash_key`; keep it private and reuse it so ids stay stable across exports.
    Optional: put LinkedIn exports in `data/raw/linkedin/` and run `python scripts/process_linkedin.py`
    Optional: unzip the Mailchimp export into `data/raw/mailchimp/` and run `python scripts/aggregate_mailchimp.py`
 3. `python scripts/build_db.py`
@@ -65,12 +67,16 @@ To inspect a new export without exposing its contents, `python scripts/inventory
 - **Crowded send days had lower open rates.** Since October 2025: 49% on single-email days, 38.5% on days with 2–4 emails, 33% on days with 5+ (up to 13 emails in one day). Position within a batch didn't matter, so the effect looks cumulative rather than within-day.
 - **Batch sends cost subscribers.** On the 6 days with 5+ Insights emails, followers fell by 7 on average (42 lost in total), more than all losses across 733 days without a send. The two worst days (-14 each) were the 13-email and 11-email days.
 - **Batch sends get fewer views per post.** Since Oct 2025: median 351 views for single-email days, 250 for 2-4, 204 for 5+.
-- **Open question:** is the remaining open-rate decline subscriber fatigue, or a change in list composition (~76 subscribers added during a period with no sends)? Next step is a subscriber-cohort analysis using hashed IDs.
+- **The open-rate decline is fatigue, not list composition** (`sql/cohort_open_rates.sql`). Grouping subscribers by the quarter of their first email, every cohort declined: the fall-2024 cohort opened 61% of emails in Q4 2024 and 25% in Q2 2026. Newer subscribers opened *more* than older ones, so the changing list mix actually softened the drop. At the Q4 2024 mix, the Q2 2026 open rate would have been ~25% instead of 29%.
+- **Heavy sending wears out new subscribers within months.** The Q4 2025 cohort opened 58% in its first quarter, 42% the next (when 32 emails went out) and 32% by Q2 2026.
+- **Open rate falls with the number of emails received, even in the same quarter** (`sql/open_rate_by_emails_received.sql`). In Q2 2026: 40% for subscribers who had received fewer than 25 emails, 31% for 25–49, 27% for 50+.
+- **The people who left were engaged readers.** 121 addresses that got Insights emails are no longer on the list. In Q1 2026 they opened 45% of emails, against 29–41% for the cohorts that stayed.
+- **107 current subscribers have never received an email.** They joined after the last send (June 2026), so the relaunch will reach a fresh group.
 
 ## Roadmap
 
 - [x] Add per-post views, daily followers and monthly views (Substack Stats exports)
-- [ ] Subscriber cohort analysis (hashed IDs) to separate fatigue from list composition
+- [x] Subscriber cohort analysis (hashed IDs) to separate fatigue from list composition
 - [x] Load Mailchimp campaign, link-click and list-growth data
 - [x] Load LinkedIn page analytics (overlapping exports de-duplicated, newest wins)
 - [x] UTM tagging convention (UTM builder sheet)

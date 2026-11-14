@@ -11,6 +11,7 @@ Tables
     Substack:  posts, opens, email_posts
                post_stats, sub_followers_daily, sub_views_monthly, sub_audience_location
                (stats tables built only if <data dir>/substack_stats/ has Stats-page exports)
+               subscribers, sub_email_history  (hashed ids; built only if sub_deliveries.csv exists)
     Mailchimp: mc_campaigns, mc_link_clicks, mc_list_growth, mc_unsub_reasons
                (built only if <data dir>/mailchimp/campaigns.csv exists)
     LinkedIn:  li_daily, li_posts, li_demographics, li_competitors
@@ -151,6 +152,33 @@ if stats_location:
     CREATE OR REPLACE TABLE sub_audience_location AS
     SELECT location, "free signups" AS free_signups FROM read_csv_auto('{stats_location}')
     """)
+
+# Subscriber-level history, hashed ids only (optional: run scripts/hash_subscribers.py).
+if (data_dir / "sub_deliveries.csv").exists():
+    con.sql(f"""
+    CREATE OR REPLACE TABLE subscribers AS
+    SELECT * FROM read_csv_auto('{csv("subscribers.csv")}');
+
+    -- One row per email delivered to a subscriber, with the context cohort analysis needs:
+    -- cohort        = quarter of the subscriber's first Insights email (known for everyone,
+    --                 including people who have since left the list)
+    -- prior_emails  = Insights emails this subscriber had already received
+    CREATE OR REPLACE TABLE sub_email_history AS
+    SELECT
+        d.sub_id,
+        d.post_number,
+        p.emailed_at,
+        date_trunc('quarter', p.emailed_at)::DATE                              AS send_quarter,
+        date_trunc('quarter', MIN(p.emailed_at) OVER (PARTITION BY d.sub_id))::DATE AS cohort,
+        ROW_NUMBER() OVER (PARTITION BY d.sub_id ORDER BY p.emailed_at) - 1    AS prior_emails,
+        d.opened,
+        s.on_list
+    FROM read_csv_auto('{csv("sub_deliveries.csv")}') d
+    JOIN posts p USING (post_number)
+    LEFT JOIN subscribers s USING (sub_id);
+    """)
+    n_subs, n_rows = con.sql("SELECT COUNT(DISTINCT sub_id), COUNT(*) FROM sub_email_history").fetchall()[0]
+    print(f"Subscribers: {n_rows:,} deliveries to {n_subs} hashed ids")
 
 # ---------------------------------------------------------------------------
 # Mailchimp (optional)
