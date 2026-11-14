@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd job: run the GRC Insights weekly refresh every Monday at 08:00.
+  Template: ops/install_schedule.sh fills in __PYTHON__, __REPO__ and __HOME__ and installs it
+  as ~/Library/LaunchAgents/com.grc.insights.refresh.plist. Don't edit the installed copy.
+
+  If the Mac is asleep at 08:00 Monday, launchd runs the job once when it wakes
+  (cron would just skip it). If it's shut down, the run waits for next Monday.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.grc.insights.refresh</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PYTHON__</string>
+    <string>__REPO__/scripts/refresh.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+
+  <!-- Weekday 1 = Monday -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key><integer>1</integer>
+    <key>Hour</key><integer>8</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+
+  <!-- launchd starts jobs with a bare PATH; give it the one the scripts expect. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__PYDIR__:__HOME__/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <!-- refresh.py writes its own detailed log to data/logs/. This catches anything that
+       happens before it starts (e.g. Python not found, folder access denied). -->
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/grc-insights-refresh.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/grc-insights-refresh.log</string>
+
+  <!-- Run at low priority so it doesn't slow down whatever you're doing. -->
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>LowPriorityIO</key>
+  <true/>
+</dict>
+</plist>
